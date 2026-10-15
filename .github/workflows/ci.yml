@@ -27,3 +27,15 @@ jobs:
         run: make lint test
       - name: PostgreSQL integration test
         run: make test-integration
+
+  compose-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Start the whole stack with one command
+        run: docker compose up -d --build --wait
+      - name: Smoke test through nginx
+        run: scripts/smoke.sh
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose logs
