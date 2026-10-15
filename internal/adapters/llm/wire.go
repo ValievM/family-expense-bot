@@ -7,7 +7,7 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/service/agent"
 )
 
-// ErrEmptyResponse means the provider replied successfully but without any choice.
+// ErrEmptyResponse — провайдер ответил успешно, но без единого choice.
 var ErrEmptyResponse = errors.New("llm provider returned no choices")
 
 type chatRequest struct {
@@ -52,6 +52,9 @@ type chatResponse struct {
 	} `json:"choices"`
 }
 
+// Принимает: model — имя модели; request — запрос агента.
+// Делает: переводит запрос агента в формат chat completions; при наличии инструментов ставит tool_choice=auto.
+// Возвращает: chatRequest для отправки провайдеру.
 func newChatRequest(model string, request agent.Request) chatRequest {
 	wire := chatRequest{Model: model, Messages: make([]chatMessage, 0, len(request.Messages))}
 	for _, message := range request.Messages {
@@ -69,6 +72,9 @@ func newChatRequest(model string, request agent.Request) chatRequest {
 	return wire
 }
 
+// Принимает: message — сообщение агента.
+// Делает: переводит сообщение в провайдерский формат; у ассистентского сообщения только с вызовами инструментов content остаётся null, как требуют многие провайдеры.
+// Возвращает: chatMessage.
 func toChatMessage(message agent.Message) chatMessage {
 	wire := chatMessage{Role: string(message.Role), ToolCallID: message.ToolCallID}
 	// Assistant messages that only request tools carry null content, which several providers require.
@@ -86,6 +92,9 @@ func toChatMessage(message agent.Message) chatMessage {
 	return wire
 }
 
+// Принимает: ничего.
+// Делает: берёт первый choice ответа и переводит его в сообщение ассистента вместе с вызовами инструментов.
+// Возвращает: agent.Message или ErrEmptyResponse, если choices пуст.
 func (response chatResponse) assistantMessage() (agent.Message, error) {
 	if len(response.Choices) == 0 {
 		return agent.Message{}, ErrEmptyResponse

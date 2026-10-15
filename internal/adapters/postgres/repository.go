@@ -1,4 +1,4 @@
-// Package postgres persists expenses in PostgreSQL.
+// Package postgres — хранение расходов в PostgreSQL.
 package postgres
 
 import (
@@ -16,7 +16,7 @@ import (
 
 const expenseColumns = "id, user_id, amount, category, spent_at, comment, created_at, updated_at"
 
-// Repository implements expense persistence with pgx.
+// Repository — хранение расходов в PostgreSQL через pgx.
 type Repository struct {
 	pool     *pgxpool.Pool
 	location *time.Location
@@ -24,7 +24,9 @@ type Repository struct {
 
 var _ expense.Repository = (*Repository)(nil)
 
-// NewRepository binds the pool and calendar location used to map PostgreSQL DATE values.
+// Принимает: pool — пул соединений; location — часовой пояс для календарных дат (nil означает UTC).
+// Делает: привязывает пул и пояс, в котором значения DATE превращаются в time.Time.
+// Возвращает: готовый *Repository.
 func NewRepository(pool *pgxpool.Pool, location *time.Location) *Repository {
 	if location == nil {
 		location = time.UTC
@@ -32,7 +34,9 @@ func NewRepository(pool *pgxpool.Pool, location *time.Location) *Repository {
 	return &Repository{pool: pool, location: location}
 }
 
-// Create inserts an expense and returns its generated ID and stored values.
+// Принимает: ctx — контекст запроса; item — новый расход.
+// Делает: вставляет расход одним INSERT ... RETURNING.
+// Возвращает: сохранённый расход с присвоенным ID или ошибку БД.
 func (repository *Repository) Create(ctx context.Context, item domain.Expense) (domain.Expense, error) {
 	query := `INSERT INTO expenses (user_id, amount, category, spent_at, comment, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -52,7 +56,9 @@ func (repository *Repository) Create(ctx context.Context, item domain.Expense) (
 	return created, nil
 }
 
-// Get returns an expense or expense.ErrNotFound.
+// Принимает: ctx — контекст запроса; id — идентификатор расхода.
+// Делает: читает расход по ID.
+// Возвращает: расход или expense.ErrNotFound, если записи нет.
 func (repository *Repository) Get(ctx context.Context, id int64) (domain.Expense, error) {
 	item, err := repository.scanExpense(repository.pool.QueryRow(ctx,
 		"SELECT "+expenseColumns+" FROM expenses WHERE id = $1", id))
@@ -62,7 +68,9 @@ func (repository *Repository) Get(ctx context.Context, id int64) (domain.Expense
 	return item, nil
 }
 
-// List applies inclusive calendar-date filters and orders by spent date descending.
+// Принимает: ctx — контекст запроса; filter — необязательные условия по пользователю, категории и датам.
+// Делает: выбирает расходы, применяя заданные условия (даты включительно), и сортирует по дате трат по убыванию, затем по ID.
+// Возвращает: срез расходов (пустой, не nil) или ошибку БД.
 func (repository *Repository) List(ctx context.Context, filter expense.ListFilter) ([]domain.Expense, error) {
 	var userID, category, from, to any
 	if filter.UserID != nil {
@@ -103,7 +111,9 @@ func (repository *Repository) List(ctx context.Context, filter expense.ListFilte
 	return items, nil
 }
 
-// ListUserIDs returns distinct owners in ascending order.
+// Принимает: ctx — контекст запроса.
+// Делает: выбирает уникальных владельцев расходов.
+// Возвращает: идентификаторы пользователей по возрастанию или ошибку БД.
 func (repository *Repository) ListUserIDs(ctx context.Context) ([]int64, error) {
 	rows, err := repository.pool.Query(ctx, "SELECT DISTINCT user_id FROM expenses ORDER BY user_id")
 	if err != nil {
@@ -125,7 +135,9 @@ func (repository *Repository) ListUserIDs(ctx context.Context) ([]int64, error) 
 	return userIDs, nil
 }
 
-// Update replaces mutable expense values and returns the stored row.
+// Принимает: ctx — контекст запроса; item — расход с новыми значениями.
+// Делает: обновляет только изменяемые поля (сумма, категория, дата, комментарий, updated_at); владелец и created_at не меняются.
+// Возвращает: сохранённую строку или expense.ErrNotFound, если записи нет.
 func (repository *Repository) Update(ctx context.Context, item domain.Expense) (domain.Expense, error) {
 	query := `UPDATE expenses
 		SET amount = $2, category = $3, spent_at = $4, comment = $5, updated_at = $6
@@ -145,7 +157,9 @@ func (repository *Repository) Update(ctx context.Context, item domain.Expense) (
 	return updated, nil
 }
 
-// Delete removes an expense or returns expense.ErrNotFound.
+// Принимает: ctx — контекст запроса; id — идентификатор расхода.
+// Делает: удаляет расход по ID.
+// Возвращает: nil при успехе, expense.ErrNotFound если ничего не удалено, либо ошибку БД.
 func (repository *Repository) Delete(ctx context.Context, id int64) error {
 	result, err := repository.pool.Exec(ctx, "DELETE FROM expenses WHERE id = $1", id)
 	if err != nil {
@@ -157,10 +171,14 @@ func (repository *Repository) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
+// rowScanner — общий интерфейс Scan для pgx.Row и pgx.Rows.
 type rowScanner interface {
 	Scan(dest ...any) error
 }
 
+// Принимает: row — строка результата запроса.
+// Делает: считывает колонки в domain.Expense и переводит DATE в полночь в календарном поясе репозитория; бесконечные и пустые даты отвергаются.
+// Возвращает: расход, expense.ErrNotFound при отсутствии строки, domain.ErrInvalidDate при некорректной дате или ошибку чтения.
 func (repository *Repository) scanExpense(row rowScanner) (domain.Expense, error) {
 	var item domain.Expense
 	var category string
@@ -189,6 +207,9 @@ func (repository *Repository) scanExpense(row rowScanner) (domain.Expense, error
 	return item, nil
 }
 
+// Принимает: value — момент времени.
+// Делает: берёт календарную дату (год, месяц, день) значения и превращает её в UTC-полночь для DATE.
+// Возвращает: валидный pgtype.Date.
 func toPostgresDate(value time.Time) pgtype.Date {
 	year, month, day := value.Date()
 	return pgtype.Date{Time: time.Date(year, month, day, 0, 0, 0, 0, time.UTC), Valid: true}

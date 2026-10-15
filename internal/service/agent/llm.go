@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 )
 
-// Role identifies the author of a conversation message.
+// Role — автор сообщения в диалоге.
 type Role string
 
-// Conversation roles understood by the agent loop and every LLM adapter.
+// Роли диалога, понятные циклу агента и всем LLM-адаптерам.
 const (
 	RoleSystem    Role = "system"
 	RoleUser      Role = "user"
@@ -16,14 +16,14 @@ const (
 	RoleTool      Role = "tool"
 )
 
-// ToolCall is a function invocation requested by the model. Arguments is raw JSON the tool must validate.
+// ToolCall — вызов функции, запрошенный моделью; Arguments — сырой JSON, который инструмент обязан проверить.
 type ToolCall struct {
 	ID        string
 	Name      string
 	Arguments json.RawMessage
 }
 
-// Message is one provider-neutral conversation entry.
+// Message — одно сообщение диалога в формате, не зависящем от провайдера.
 type Message struct {
 	Role       Role
 	Content    string
@@ -31,20 +31,23 @@ type Message struct {
 	ToolCallID string     // set on tool messages to answer a specific call
 }
 
-// ToolSpec advertises a callable function to the model; Parameters is a JSON Schema object.
+// ToolSpec — описание функции для модели; Parameters — объект JSON Schema.
 type ToolSpec struct {
 	Name        string
 	Description string
 	Parameters  json.RawMessage
 }
 
-// Request is a single completion round.
+// Request — один раунд запроса к модели.
 type Request struct {
 	Messages []Message
 	Tools    []ToolSpec
 }
 
-// LLM is the only capability the agent needs from a language model provider.
+// LLM — единственное, что агенту нужно от провайдера языковой модели.
 type LLM interface {
+	// Принимает: ctx — контекст запроса; request — сообщения диалога и доступные инструменты.
+	// Делает: отправляет диалог модели и получает следующее сообщение ассистента.
+	// Возвращает: сообщение ассистента (текст и/или вызовы инструментов) или ошибку провайдера.
 	Complete(ctx context.Context, request Request) (Message, error)
 }

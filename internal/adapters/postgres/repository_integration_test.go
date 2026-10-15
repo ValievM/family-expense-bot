@@ -1,3 +1,4 @@
+// Package postgres_test — интеграционные тесты репозитория на реальной PostgreSQL.
 package postgres_test
 
 import (
@@ -15,6 +16,9 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
+// Принимает: t — тестовый контекст.
+// Делает: создание, чтение, фильтрацию, порядок, список владельцев, обновление и удаление расходов в реальной PostgreSQL, включая ErrNotFound.
+// Возвращает: ничего.
 func TestRepositoryPostgresCRUDAndFilters(t *testing.T) {
 	repository, location := newPostgresRepository(t)
 	ctx := context.Background()
@@ -142,6 +146,9 @@ func TestRepositoryPostgresCRUDAndFilters(t *testing.T) {
 
 }
 
+// Принимает: t — тестовый контекст.
+// Делает: подключается к БД из TEST_DATABASE_URL (без неё пропускает тест), применяет миграции и создаёт пул и репозиторий с фиксированным часовым поясом.
+// Возвращает: *postgres.Repository и *time.Location, использованный для дат.
 func newPostgresRepository(t *testing.T) (*postgres.Repository, *time.Location) {
 	t.Helper()
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
@@ -176,6 +183,9 @@ func newPostgresRepository(t *testing.T) (*postgres.Repository, *time.Location) 
 	return postgres.NewRepository(pool, location), location
 }
 
+// Принимает: values — список чисел.
+// Делает: проверяет, что значения идут строго по возрастанию.
+// Возвращает: true, если порядок строго возрастающий.
 func strictlyAscending(values []int64) bool {
 	for index := 1; index < len(values); index++ {
 		if values[index-1] >= values[index] {
@@ -185,6 +195,9 @@ func strictlyAscending(values []int64) bool {
 	return true
 }
 
+// Принимает: values — список чисел; target — искомое число.
+// Делает: ищет число в списке.
+// Возвращает: true, если число найдено.
 func contains(values []int64, target int64) bool {
 	for _, value := range values {
 		if value == target {
