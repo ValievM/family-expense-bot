@@ -1,3 +1,4 @@
+// Package config centralizes environment settings so adapters share one configuration source.
 package config
 
 import (

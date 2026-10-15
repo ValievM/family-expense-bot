@@ -5,7 +5,14 @@ run:
 
 linters:
   default: standard
-
+  enable:
+    - bodyclose
+    - errorlint
+    - gocritic
+    - gosec
+    - misspell
+    - revive
+    - unconvert
 formatters:
   enable:
     - gofmt
