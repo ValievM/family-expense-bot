@@ -103,7 +103,7 @@ web/                          — фронтенд
 |---|---|---|---|
 | **T0** | Каркас: `go mod`, структура папок, `Makefile`, `golangci-lint`, `.env.example`, пакет `config` | — | `make lint test` проходит на пустом проекте |
 | **T1** | Домен: `Expense`, `Category`, валидация (сумма > 0, известная категория, дата), доменные ошибки | T0 | юнит-тесты на валидацию |
-| **T2** | Миграции + Postgres-репозиторий (`Create/Get/List/ListUserIDs/Update/Delete`, фильтры) | T1 | интеграционные тесты на реальном Postgres (testcontainers или compose) |
+| **T2** | Миграции + Postgres-репозиторий (`Create/Get/List/ListUserIDs/Update/Delete`, фильтры) | T1 | интеграционные тесты на реальном Postgres (`make test-integration`, compose) |
 | **T3** | Сервис `expense` (use cases) + порт `Repository` | T1 | юнит-тесты на fake-репозитории, включая проверку владельца |
 | **T4** | REST API: хендлеры, DTO, единый формат ошибок, `openapi.yaml` | T3 | тесты хендлеров через `httptest`; `openapi.yaml` согласован |
 | **T5** | LLM-клиент: порт `LLM` + OpenAI-совместимый адаптер, конфиг URL/ключ/модель | T0 | тест на `httptest`-сервере с записанным ответом |

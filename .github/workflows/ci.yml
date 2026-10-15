@@ -25,3 +25,5 @@ jobs:
           install-only: true
       - name: Lint and test
         run: make lint test
+      - name: PostgreSQL integration test
+        run: make test-integration

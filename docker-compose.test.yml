@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: family_expense_test
+      POSTGRES_USER: family_expense
+      POSTGRES_PASSWORD: local-test-only
+    ports:
+      - "127.0.0.1:55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U family_expense -d family_expense_test"]
+      interval: 1s
+      timeout: 5s
+      retries: 30
