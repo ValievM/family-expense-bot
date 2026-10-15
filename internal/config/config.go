@@ -1,35 +1,111 @@
-// Package config — настройки из окружения, общий источник конфигурации для адаптеров.
+// Package config читает настройки приложения из переменных окружения и проверяет их при старте.
 package config
 
 import (
-	"os"
+	"errors"
+	"fmt"
+	"strconv"
 	"strings"
+	"time"
 )
 
-// defaultTimeZone — часовой пояс по умолчанию, если TZ не задан.
-const defaultTimeZone = "Europe/Moscow"
+const (
+	defaultTimeZone   = "Europe/Moscow"
+	defaultHTTPAddr   = ":8080"
+	defaultLLMBaseURL = "https://api.openai.com/v1"
+	defaultLLMModel   = "gpt-4.1-mini"
+)
 
-// Config — настройки, общие для адаптеров приложения.
+// Config — все настройки приложения; адаптеры получают из него только нужные им поля.
 type Config struct {
-	LLMBaseURL string
-	LLMAPIKey  string
-	LLMModel   string
-	TimeZone   string
+	DatabaseURL      string
+	HTTPAddr         string
+	TelegramToken    string
+	AllowedUserIDs   map[int64]struct{}
+	LLMBaseURL       string
+	LLMAPIKey        string
+	LLMModel         string
+	Location         *time.Location
+	TelegramEnabled  bool
+	RequestedZoneKey string
 }
 
-// Принимает: ничего.
-// Делает: читает LLM_BASE_URL, LLM_API_KEY, LLM_MODEL и TZ из окружения; пустой TZ после обрезки пробелов заменяется на Europe/Moscow.
-// Возвращает: заполненную структуру Config.
-func Load() Config {
-	timeZone := strings.TrimSpace(os.Getenv("TZ"))
-	if timeZone == "" {
-		timeZone = defaultTimeZone
+// Принимает: getenv — функция чтения переменной окружения (os.Getenv в приложении, словарь в тестах).
+// Делает: читает настройки, подставляет значения по умолчанию и проверяет обязательные и взаимозависимые поля.
+// Возвращает: готовую Config либо ошибку со всеми найденными проблемами сразу.
+func Load(getenv func(string) string) (Config, error) {
+	read := func(key, fallback string) string {
+		if value := strings.TrimSpace(getenv(key)); value != "" {
+			return value
+		}
+		return fallback
 	}
 
-	return Config{
-		LLMBaseURL: os.Getenv("LLM_BASE_URL"),
-		LLMAPIKey:  os.Getenv("LLM_API_KEY"),
-		LLMModel:   os.Getenv("LLM_MODEL"),
-		TimeZone:   timeZone,
+	cfg := Config{
+		DatabaseURL:      read("DATABASE_URL", ""),
+		HTTPAddr:         read("HTTP_ADDR", defaultHTTPAddr),
+		TelegramToken:    read("TELEGRAM_BOT_TOKEN", ""),
+		LLMBaseURL:       read("LLM_BASE_URL", defaultLLMBaseURL),
+		LLMAPIKey:        read("LLM_API_KEY", ""),
+		LLMModel:         read("LLM_MODEL", defaultLLMModel),
+		RequestedZoneKey: read("TZ", defaultTimeZone),
 	}
+	cfg.TelegramEnabled = cfg.TelegramToken != ""
+
+	var problems []error
+	if cfg.DatabaseURL == "" {
+		problems = append(problems, errors.New("DATABASE_URL is required"))
+	}
+
+	location, err := time.LoadLocation(cfg.RequestedZoneKey)
+	if err != nil {
+		problems = append(problems, fmt.Errorf("TZ %q is not a valid time zone: %w", cfg.RequestedZoneKey, err))
+	}
+	cfg.Location = location
+
+	allowed, err := parseUserIDs(getenv("ALLOWED_USER_IDS"))
+	if err != nil {
+		problems = append(problems, err)
+	}
+	cfg.AllowedUserIDs = allowed
+
+	// Без ключа можно работать только с совместимыми серверами без авторизации, например с локальной Ollama.
+	if cfg.TelegramEnabled && cfg.LLMAPIKey == "" && cfg.LLMBaseURL == defaultLLMBaseURL {
+		problems = append(problems, errors.New("LLM_API_KEY is required when the Telegram bot uses the OpenAI API"))
+	}
+
+	if len(problems) > 0 {
+		return Config{}, fmt.Errorf("invalid configuration: %w", errors.Join(problems...))
+	}
+	return cfg, nil
+}
+
+// Принимает: raw — строка Telegram ID через запятую, например "1, 2".
+// Делает: разбирает список разрешённых пользователей; пустая строка означает «разрешены все».
+// Возвращает: множество ID либо ошибку для нечисловых и неположительных значений.
+func parseUserIDs(raw string) (map[int64]struct{}, error) {
+	ids := make(map[int64]struct{})
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		id, err := strconv.ParseInt(part, 10, 64)
+		if err != nil || id <= 0 {
+			return nil, fmt.Errorf("ALLOWED_USER_IDS contains invalid Telegram ID %q", part)
+		}
+		ids[id] = struct{}{}
+	}
+	return ids, nil
+}
+
+// Принимает: userID — Telegram ID автора сообщения.
+// Делает: проверяет доступ по списку ALLOWED_USER_IDS; пустой список разрешает всех.
+// Возвращает: true, если пользователю можно пользоваться ботом.
+func (cfg Config) IsUserAllowed(userID int64) bool {
+	if len(cfg.AllowedUserIDs) == 0 {
+		return true
+	}
+	_, allowed := cfg.AllowedUserIDs[userID]
+	return allowed
 }
