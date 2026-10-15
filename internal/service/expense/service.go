@@ -31,14 +31,18 @@ func (service *Service) ForUser(userID int64) UserExpenses {
 	return UserExpenses{service: service, userID: userID}
 }
 
-// Create validates and persists an expense for an unrestricted caller.
+// Create validates and persists an expense for an unrestricted caller; a zero SpentAt means today.
 func (service *Service) Create(ctx context.Context, item domain.Expense) (domain.Expense, error) {
+	now := service.clock.Now().UTC()
+	if item.SpentAt.IsZero() {
+		// An omitted date means "today", which every caller (REST and agent) shares.
+		item.SpentAt = now
+	}
 	item.SpentAt = service.normalizeDate(item.SpentAt)
 	if err := item.Validate(); err != nil {
 		return domain.Expense{}, err
 	}
 
-	now := service.clock.Now().UTC()
 	item.CreatedAt = now
 	item.UpdatedAt = now
 	created, err := service.repository.Create(ctx, item)

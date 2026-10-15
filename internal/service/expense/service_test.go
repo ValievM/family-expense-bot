@@ -292,3 +292,20 @@ func validExpense(userID, id, amount int64) domain.Expense {
 		SpentAt:  time.Date(2026, time.January, 2, 0, 0, 0, 0, time.UTC),
 	}
 }
+
+func TestCreateDefaultsOmittedDateToTodayInConfiguredLocation(t *testing.T) {
+	moscow := time.FixedZone("UTC+03", 3*60*60)
+	// 22:30 UTC on 1 Jan is already 2 Jan in Moscow.
+	now := time.Date(2026, time.January, 1, 22, 30, 0, 0, time.UTC)
+	service := expense.NewService(newFakeRepository(), &fakeClock{now: now}, moscow)
+	item := validExpense(7, 0, 100)
+	item.SpentAt = time.Time{}
+
+	created, err := service.Create(context.Background(), item)
+	if err != nil {
+		t.Fatalf("Create() error = %v, want nil", err)
+	}
+	if got, want := domain.FormatDate(created.SpentAt, moscow), "2026-01-02"; got != want {
+		t.Errorf("SpentAt = %s, want %s", got, want)
+	}
+}
