@@ -16,12 +16,13 @@ type ListFilter struct {
 	To       *time.Time
 }
 
-// Repository defines persistence operations required by Service. List sorts by spent_at descending;
-// Get, Update, and Delete return ErrNotFound when their ID is absent.
+// Repository defines persistence operations required by Service. List sorts by SpentAt descending;
+// ListUserIDs returns distinct IDs in ascending order, and missing IDs return ErrNotFound.
 type Repository interface {
 	Create(ctx context.Context, expense domain.Expense) (domain.Expense, error)
 	Get(ctx context.Context, id int64) (domain.Expense, error)
 	List(ctx context.Context, filter ListFilter) ([]domain.Expense, error)
+	ListUserIDs(ctx context.Context) ([]int64, error)
 	Update(ctx context.Context, expense domain.Expense) (domain.Expense, error)
 	Delete(ctx context.Context, id int64) error
 }

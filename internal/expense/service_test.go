@@ -12,159 +12,191 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/expense"
 )
 
-func TestCreateForUserUsesTrustedOwner(t *testing.T) {
+func TestCreateStampsTimestampsFromClock(t *testing.T) {
+	now := time.Date(2026, time.January, 2, 15, 4, 5, 6, time.FixedZone("UTC+03", 3*60*60))
 	repository := newFakeRepository()
-	service := expense.NewService(repository)
-	input := validExpense(999, 0, 100)
+	service := expense.NewService(repository, &fakeClock{now: now}, time.UTC)
 
-	created, err := service.CreateForUser(context.Background(), 7, input)
+	created, err := service.Create(context.Background(), validExpense(7, 0, 100))
 	if err != nil {
-		t.Fatalf("CreateForUser() error = %v, want nil", err)
+		t.Fatalf("Create() error = %v, want nil", err)
 	}
-	if created.UserID != 7 {
-		t.Errorf("created UserID = %d, want trusted owner 7", created.UserID)
-	}
-	if stored := repository.records[created.ID]; stored.UserID != 7 {
-		t.Errorf("stored UserID = %d, want trusted owner 7", stored.UserID)
+	if !created.CreatedAt.Equal(now.UTC()) || !created.UpdatedAt.Equal(now.UTC()) {
+		t.Errorf("created timestamps = (%v, %v), want both %v", created.CreatedAt, created.UpdatedAt, now.UTC())
 	}
 }
 
-func TestGetForUserHidesForeignExpenses(t *testing.T) {
-	stored := validExpense(8, 42, 500)
-	repository := newFakeRepository(stored)
-	service := expense.NewService(repository)
-
-	if _, err := service.GetForUser(context.Background(), 7, stored.ID); !errors.Is(err, expense.ErrNotFound) {
-		t.Fatalf("GetForUser() error = %v, want ErrNotFound", err)
-	}
-	if got, err := service.GetForUser(context.Background(), 8, stored.ID); err != nil || got.ID != stored.ID {
-		t.Errorf("owner GetForUser() = (%+v, %v), want expense %d", got, err, stored.ID)
-	}
-}
-
-func TestListForUserOverridesPayloadOwner(t *testing.T) {
-	repository := newFakeRepository(
-		validExpense(7, 1, 100),
-		validExpense(8, 2, 200),
-	)
-	service := expense.NewService(repository)
-	requestedOwner := int64(8)
-
-	got, err := service.ListForUser(context.Background(), 7, expense.ListFilter{UserID: &requestedOwner})
-	if err != nil {
-		t.Fatalf("ListForUser() error = %v, want nil", err)
-	}
-	if len(got) != 1 || got[0].UserID != 7 {
-		t.Errorf("ListForUser() = %+v, want only expenses owned by user 7", got)
-	}
-}
-
-func TestListAppliesFiltersAndReturnsNewestFirst(t *testing.T) {
-	older := validExpense(7, 1, 100)
-	older.SpentAt = time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)
-	newer := validExpense(7, 2, 200)
-	newer.SpentAt = time.Date(2026, time.January, 3, 0, 0, 0, 0, time.UTC)
-	otherCategory := validExpense(7, 3, 300)
-	otherCategory.Category = domain.CategoryHealth
-	otherCategory.SpentAt = time.Date(2026, time.January, 2, 0, 0, 0, 0, time.UTC)
-	repository := newFakeRepository(older, newer, otherCategory)
-	service := expense.NewService(repository)
-	userID := int64(7)
-	category := domain.CategoryFood
-	from := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)
-	to := time.Date(2026, time.January, 3, 0, 0, 0, 0, time.UTC)
-
-	got, err := service.List(context.Background(), expense.ListFilter{
-		UserID:   &userID,
-		Category: &category,
-		From:     &from,
-		To:       &to,
-	})
-	if err != nil {
-		t.Fatalf("List() error = %v, want nil", err)
-	}
-	if len(got) != 2 || got[0].ID != newer.ID || got[1].ID != older.ID {
-		t.Errorf("List() = %+v, want matching expenses newest first", got)
-	}
-}
-
-func TestUpdateForUserPreservesOwnerAndCreationTime(t *testing.T) {
+func TestUpdateMergesPatchAndStampsUpdateTime(t *testing.T) {
 	createdAt := time.Date(2025, time.March, 1, 8, 0, 0, 0, time.UTC)
 	stored := validExpense(7, 42, 100)
 	stored.CreatedAt = createdAt
+	stored.UpdatedAt = createdAt
 	repository := newFakeRepository(stored)
-	service := expense.NewService(repository)
-	update := stored
-	update.UserID = 8
-	update.CreatedAt = time.Time{}
-	update.Amount = 250
+	now := time.Date(2026, time.January, 2, 15, 4, 5, 6, time.UTC)
+	service := expense.NewService(repository, &fakeClock{now: now}, time.UTC)
+	amount := int64(250)
+	comment := "new comment"
 
-	got, err := service.UpdateForUser(context.Background(), 7, update)
+	updated, err := service.Update(context.Background(), stored.ID, expense.Patch{
+		Amount:  &amount,
+		Comment: &comment,
+	})
 	if err != nil {
-		t.Fatalf("UpdateForUser() error = %v, want nil", err)
+		t.Fatalf("Update() error = %v, want nil", err)
 	}
-	if got.UserID != 7 || got.CreatedAt != createdAt || got.Amount != 250 {
-		t.Errorf("UpdateForUser() = %+v, want owner 7, original creation time, and amount 250", got)
+	if updated.Amount != amount || updated.Comment != comment || updated.Category != stored.Category {
+		t.Errorf("Update() merged fields incorrectly: %+v", updated)
 	}
-}
-
-func TestUpdateForUserRejectsForeignExpense(t *testing.T) {
-	stored := validExpense(8, 42, 100)
-	repository := newFakeRepository(stored)
-	service := expense.NewService(repository)
-	update := stored
-	update.Amount = 250
-
-	if _, err := service.UpdateForUser(context.Background(), 7, update); !errors.Is(err, expense.ErrNotFound) {
-		t.Fatalf("UpdateForUser() error = %v, want ErrNotFound", err)
-	}
-	if got := repository.records[stored.ID].Amount; got != 100 {
-		t.Errorf("foreign expense amount changed to %d, want 100", got)
+	if !updated.CreatedAt.Equal(createdAt) || !updated.UpdatedAt.Equal(now) {
+		t.Errorf("Update() timestamps = (%v, %v), want (%v, %v)", updated.CreatedAt, updated.UpdatedAt, createdAt, now)
 	}
 }
 
-func TestDeleteForUserRejectsForeignExpense(t *testing.T) {
+func TestUpdateRejectsInvalidMergedExpenseWithoutPersistence(t *testing.T) {
+	stored := validExpense(7, 42, 100)
+	repository := newFakeRepository(stored)
+	service := expense.NewService(repository, &fakeClock{now: time.Now()}, time.UTC)
+	invalidAmount := int64(0)
+
+	if _, err := service.Update(context.Background(), stored.ID, expense.Patch{Amount: &invalidAmount}); !errors.Is(err, domain.ErrInvalidAmount) {
+		t.Fatalf("Update() error = %v, want ErrInvalidAmount", err)
+	}
+	if got := repository.records[stored.ID].Amount; got != stored.Amount {
+		t.Errorf("invalid patch changed amount to %d, want %d", got, stored.Amount)
+	}
+}
+
+func TestUserExpensesCannotReadOrChangeForeignExpenses(t *testing.T) {
 	stored := validExpense(8, 42, 100)
 	repository := newFakeRepository(stored)
-	service := expense.NewService(repository)
+	service := expense.NewService(repository, &fakeClock{now: time.Now()}, time.UTC)
+	userExpenses := service.ForUser(7)
+	amount := int64(250)
 
-	if err := service.DeleteForUser(context.Background(), 7, stored.ID); !errors.Is(err, expense.ErrNotFound) {
-		t.Fatalf("DeleteForUser() error = %v, want ErrNotFound", err)
+	if _, err := userExpenses.Get(context.Background(), stored.ID); !errors.Is(err, expense.ErrNotFound) {
+		t.Errorf("Get() error = %v, want ErrNotFound", err)
+	}
+	if _, err := userExpenses.Update(context.Background(), stored.ID, expense.Patch{Amount: &amount}); !errors.Is(err, expense.ErrNotFound) {
+		t.Errorf("Update() error = %v, want ErrNotFound", err)
+	}
+	if err := userExpenses.Delete(context.Background(), stored.ID); !errors.Is(err, expense.ErrNotFound) {
+		t.Errorf("Delete() error = %v, want ErrNotFound", err)
+	}
+	if got := repository.records[stored.ID].Amount; got != stored.Amount {
+		t.Errorf("foreign expense amount changed to %d, want %d", got, stored.Amount)
 	}
 	if _, exists := repository.records[stored.ID]; !exists {
 		t.Fatal("foreign expense was deleted")
 	}
-	if err := service.DeleteForUser(context.Background(), 8, stored.ID); err != nil {
-		t.Fatalf("owner DeleteForUser() error = %v, want nil", err)
+}
+
+func TestUserExpensesCreateAndListBindOwner(t *testing.T) {
+	repository := newFakeRepository(validExpense(8, 1, 200))
+	service := expense.NewService(repository, &fakeClock{now: time.Now()}, time.UTC)
+	userExpenses := service.ForUser(7)
+	created, err := userExpenses.Create(context.Background(), validExpense(999, 0, 100))
+	if err != nil {
+		t.Fatalf("Create() error = %v, want nil", err)
 	}
-	if _, exists := repository.records[stored.ID]; exists {
-		t.Fatal("owned expense remains after delete")
+	if created.UserID != 7 {
+		t.Errorf("Create() UserID = %d, want scoped owner 7", created.UserID)
+	}
+
+	requestedOwner := int64(8)
+	listed, err := userExpenses.List(context.Background(), expense.ListFilter{UserID: &requestedOwner})
+	if err != nil {
+		t.Fatalf("List() error = %v, want nil", err)
+	}
+	if len(listed) != 1 || listed[0].UserID != 7 {
+		t.Errorf("List() = %+v, want only expenses owned by user 7", listed)
 	}
 }
 
-func TestCreateRejectsInvalidExpenseBeforePersistence(t *testing.T) {
+func TestUserExpensesUpdatePreservesOwnerAndCreationTime(t *testing.T) {
+	createdAt := time.Date(2025, time.March, 1, 8, 0, 0, 0, time.UTC)
+	stored := validExpense(7, 42, 100)
+	stored.CreatedAt = createdAt
+	repository := newFakeRepository(stored)
+	now := time.Date(2026, time.January, 2, 15, 0, 0, 0, time.UTC)
+	userExpenses := expense.NewService(repository, &fakeClock{now: now}, time.UTC).ForUser(7)
+	amount := int64(250)
+
+	updated, err := userExpenses.Update(context.Background(), stored.ID, expense.Patch{Amount: &amount})
+	if err != nil {
+		t.Fatalf("Update() error = %v, want nil", err)
+	}
+	if updated.UserID != 7 || !updated.CreatedAt.Equal(createdAt) || updated.Amount != amount {
+		t.Errorf("Update() = %+v, want owner 7, original creation time, and amount %d", updated, amount)
+	}
+}
+
+func TestListNormalizesDatesBeforeCheckingPeriod(t *testing.T) {
+	location := time.FixedZone("UTC+03", 3*60*60)
+	spentAt := time.Date(2026, time.January, 3, 12, 0, 0, 0, location)
+	stored := validExpense(7, 1, 100)
+	stored.SpentAt = spentAt
+	repository := newFakeRepository(stored)
+	service := expense.NewService(repository, &fakeClock{now: time.Now()}, location)
+	from := time.Date(2026, time.January, 3, 23, 0, 0, 0, location)
+	to := time.Date(2026, time.January, 3, 1, 0, 0, 0, location)
+
+	listed, err := service.List(context.Background(), expense.ListFilter{From: &from, To: &to})
+	if err != nil {
+		t.Fatalf("List() error = %v, want same-day period to be valid", err)
+	}
+	if len(listed) != 1 {
+		t.Fatalf("List() returned %d expenses, want 1", len(listed))
+	}
+	if repository.lastFilter.From == nil || repository.lastFilter.To == nil || !repository.lastFilter.From.Equal(*repository.lastFilter.To) {
+		t.Errorf("repository received unnormalized bounds: %+v", repository.lastFilter)
+	}
+}
+
+func TestListRejectsReversedCalendarPeriod(t *testing.T) {
+	location := time.FixedZone("UTC+03", 3*60*60)
 	repository := newFakeRepository()
-	service := expense.NewService(repository)
-	invalid := validExpense(7, 0, 0)
+	service := expense.NewService(repository, &fakeClock{now: time.Now()}, location)
+	from := time.Date(2026, time.January, 4, 0, 0, 0, 0, location)
+	to := time.Date(2026, time.January, 3, 23, 0, 0, 0, location)
 
-	if _, err := service.Create(context.Background(), invalid); !errors.Is(err, domain.ErrInvalidAmount) {
-		t.Fatalf("Create() error = %v, want ErrInvalidAmount", err)
+	if _, err := service.List(context.Background(), expense.ListFilter{From: &from, To: &to}); !errors.Is(err, expense.ErrInvalidPeriod) {
+		t.Fatalf("List() error = %v, want ErrInvalidPeriod", err)
 	}
-	if len(repository.records) != 0 {
-		t.Errorf("Create() persisted %d invalid expenses", len(repository.records))
+	if repository.listCalls != 0 {
+		t.Errorf("repository List called %d times for invalid period, want 0", repository.listCalls)
 	}
 }
 
-func TestListForUserRejectsInvalidOwner(t *testing.T) {
-	service := expense.NewService(newFakeRepository())
-	if _, err := service.ListForUser(context.Background(), 0, expense.ListFilter{}); !errors.Is(err, domain.ErrInvalidUser) {
-		t.Errorf("ListForUser() error = %v, want ErrInvalidUser", err)
+func TestListUserIDsReturnsUniqueOwners(t *testing.T) {
+	repository := newFakeRepository(
+		validExpense(9, 1, 100),
+		validExpense(7, 2, 200),
+		validExpense(9, 3, 300),
+	)
+	service := expense.NewService(repository, &fakeClock{now: time.Now()}, time.UTC)
+
+	got, err := service.ListUserIDs(context.Background())
+	if err != nil {
+		t.Fatalf("ListUserIDs() error = %v, want nil", err)
 	}
+	if len(got) != 2 || got[0] != 7 || got[1] != 9 {
+		t.Errorf("ListUserIDs() = %v, want [7 9]", got)
+	}
+}
+
+type fakeClock struct {
+	now time.Time
+}
+
+func (clock *fakeClock) Now() time.Time {
+	return clock.now
 }
 
 type fakeRepository struct {
-	records map[int64]domain.Expense
-	nextID  int64
+	records    map[int64]domain.Expense
+	nextID     int64
+	listCalls  int
+	lastFilter expense.ListFilter
 }
 
 func newFakeRepository(expenses ...domain.Expense) *fakeRepository {
@@ -197,6 +229,8 @@ func (repository *fakeRepository) Get(_ context.Context, id int64) (domain.Expen
 }
 
 func (repository *fakeRepository) List(_ context.Context, filter expense.ListFilter) ([]domain.Expense, error) {
+	repository.listCalls++
+	repository.lastFilter = filter
 	items := make([]domain.Expense, 0, len(repository.records))
 	for _, item := range repository.records {
 		if filter.UserID != nil && item.UserID != *filter.UserID {
@@ -205,10 +239,10 @@ func (repository *fakeRepository) List(_ context.Context, filter expense.ListFil
 		if filter.Category != nil && item.Category != *filter.Category {
 			continue
 		}
-		if filter.From != nil && item.SpentAt.Before(*filter.From) {
+		if filter.From != nil && domain.CompareDates(item.SpentAt, *filter.From, filter.From.Location()) < 0 {
 			continue
 		}
-		if filter.To != nil && item.SpentAt.After(*filter.To) {
+		if filter.To != nil && domain.CompareDates(item.SpentAt, *filter.To, filter.To.Location()) > 0 {
 			continue
 		}
 		items = append(items, item)
@@ -217,6 +251,20 @@ func (repository *fakeRepository) List(_ context.Context, filter expense.ListFil
 		return items[i].SpentAt.After(items[j].SpentAt)
 	})
 	return items, nil
+}
+
+func (repository *fakeRepository) ListUserIDs(_ context.Context) ([]int64, error) {
+	seen := make(map[int64]struct{}, len(repository.records))
+	userIDs := make([]int64, 0, len(repository.records))
+	for _, item := range repository.records {
+		if _, exists := seen[item.UserID]; exists {
+			continue
+		}
+		seen[item.UserID] = struct{}{}
+		userIDs = append(userIDs, item.UserID)
+	}
+	sort.Slice(userIDs, func(i, j int) bool { return userIDs[i] < userIDs[j] })
+	return userIDs, nil
 }
 
 func (repository *fakeRepository) Update(_ context.Context, item domain.Expense) (domain.Expense, error) {
