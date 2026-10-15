@@ -13,6 +13,11 @@ linters:
     - misspell
     - revive
     - unconvert
+  exclusions:
+    rules:
+      # Function comments follow the project format (Принимает/Делает/Возвращает), not the "Name ..." form.
+      - linters: [revive]
+        text: "comment on exported"
 formatters:
   enable:
     - gofmt
