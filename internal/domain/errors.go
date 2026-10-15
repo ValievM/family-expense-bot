@@ -3,12 +3,12 @@ package domain
 import "errors"
 
 var (
-	// ErrInvalidAmount identifies amounts that cannot represent a positive expense.
+	// ErrInvalidAmount — сумма не может быть положительным расходом.
 	ErrInvalidAmount = errors.New("amount must be greater than zero")
-	// ErrInvalidUser identifies missing or non-positive owners.
+	// ErrInvalidUser — владелец расхода не задан или его ID не положителен.
 	ErrInvalidUser = errors.New("user ID must be greater than zero")
-	// ErrUnknownCategory identifies categories outside the closed domain set.
+	// ErrUnknownCategory — категория не входит в закрытый набор домена.
 	ErrUnknownCategory = errors.New("category is unknown")
-	// ErrInvalidDate identifies missing or unparseable calendar dates.
+	// ErrInvalidDate — календарная дата отсутствует или не разбирается.
 	ErrInvalidDate = errors.New("date is invalid")
 )

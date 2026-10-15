@@ -2,6 +2,9 @@ package config
 
 import "testing"
 
+// Принимает: t — тестовый контекст.
+// Делает: проверяет значение TZ по умолчанию, заданное и пустое после обрезки пробелов.
+// Возвращает: ничего.
 func TestLoadTimeZone(t *testing.T) {
 	tests := []struct {
 		name     string

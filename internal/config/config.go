@@ -1,4 +1,4 @@
-// Package config centralizes environment settings so adapters share one configuration source.
+// Package config — настройки из окружения, общий источник конфигурации для адаптеров.
 package config
 
 import (
@@ -6,9 +6,10 @@ import (
 	"strings"
 )
 
+// defaultTimeZone — часовой пояс по умолчанию, если TZ не задан.
 const defaultTimeZone = "Europe/Moscow"
 
-// Config contains settings shared by the application adapters.
+// Config — настройки, общие для адаптеров приложения.
 type Config struct {
 	LLMBaseURL string
 	LLMAPIKey  string
@@ -16,7 +17,9 @@ type Config struct {
 	TimeZone   string
 }
 
-// Load reads the application settings from the environment.
+// Принимает: ничего.
+// Делает: читает LLM_BASE_URL, LLM_API_KEY, LLM_MODEL и TZ из окружения; пустой TZ после обрезки пробелов заменяется на Europe/Moscow.
+// Возвращает: заполненную структуру Config.
 func Load() Config {
 	timeZone := strings.TrimSpace(os.Getenv("TZ"))
 	if timeZone == "" {

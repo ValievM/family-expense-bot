@@ -17,16 +17,18 @@ type errorDetail struct {
 	Message string `json:"message"`
 }
 
-// requestError reports malformed input detected before any use case runs.
+// requestError — ошибка некорректного ввода, обнаруженная до запуска use case.
 type requestError struct {
 	code    string
 	message string
 }
 
+// Принимает: ничего.
+// Делает: отдаёт текстовое сообщение ошибки.
+// Возвращает: message строкой.
 func (err requestError) Error() string { return err.message }
 
-// errorRule maps a known domain or service error to its HTTP representation.
-// New business errors are supported by appending a rule, without touching the handlers.
+// errorRule сопоставляет известную доменную или сервисную ошибку с HTTP-статусом и кодом; новую ошибку добавляют правилом в errorRules.
 type errorRule struct {
 	target error
 	status int
@@ -42,6 +44,9 @@ var errorRules = []errorRule{
 	{expense.ErrNotFound, http.StatusNotFound, "not_found"},
 }
 
+// Принимает: w — writer ответа, r — входящий запрос, err — ошибка для отображения.
+// Делает: пишет JSON-ошибку: requestError даёт 400, известные ошибки берутся из errorRules, остальные логируются и скрываются за 500 internal.
+// Возвращает: ничего.
 func (server *Server) writeError(w http.ResponseWriter, r *http.Request, err error) {
 	var badRequest requestError
 	if errors.As(err, &badRequest) {

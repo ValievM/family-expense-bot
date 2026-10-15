@@ -2,6 +2,9 @@ package domain
 
 import "testing"
 
+// Принимает: t — тестовый контекст.
+// Делает: проверяет Label и IsValid для всех категорий и невалидность неизвестной.
+// Возвращает: ничего.
 func TestCategoryLabelsAndValidity(t *testing.T) {
 	tests := []struct {
 		category Category
@@ -32,6 +35,9 @@ func TestCategoryLabelsAndValidity(t *testing.T) {
 	}
 }
 
+// Принимает: t — тестовый контекст.
+// Делает: проверяет стабильный порядок Categories и то, что изменение результата не затрагивает каталог.
+// Возвращает: ничего.
 func TestCategoriesReturnsStableOrderedCopy(t *testing.T) {
 	want := []Category{
 		CategoryFood,

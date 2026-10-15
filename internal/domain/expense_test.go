@@ -6,6 +6,9 @@ import (
 	"time"
 )
 
+// Принимает: t — тестовый контекст.
+// Делает: проверяет Expense.Validate на корректном расходе и каждом виде нарушения.
+// Возвращает: ничего.
 func TestExpenseValidate(t *testing.T) {
 	validExpense := Expense{
 		UserID:    1,

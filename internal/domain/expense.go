@@ -2,11 +2,11 @@ package domain
 
 import "time"
 
-// Expense is a family's recorded spending with its calendar date and category.
+// Expense — записанный семейный расход с календарной датой и категорией.
 type Expense struct {
 	ID     int64
 	UserID int64
-	// Amount is measured in kopecks to keep RUB values exact.
+	// Amount — сумма в копейках, чтобы значения в рублях были точными.
 	Amount    int64
 	Category  Category
 	SpentAt   time.Time
@@ -15,7 +15,9 @@ type Expense struct {
 	UpdatedAt time.Time
 }
 
-// Validate prevents invalid spending values from crossing the domain boundary.
+// Принимает: ничего (получатель — расход).
+// Делает: проверяет сумму, владельца, категорию и то, что SpentAt — дата без времени суток.
+// Возвращает: nil для корректного расхода; ErrInvalidAmount, ErrInvalidUser, ErrUnknownCategory или ErrInvalidDate при первом нарушении.
 func (expense Expense) Validate() error {
 	if expense.Amount <= 0 {
 		return ErrInvalidAmount

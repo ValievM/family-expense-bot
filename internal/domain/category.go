@@ -1,10 +1,10 @@
-// Package domain defines expense values and their business validation without adapter dependencies.
+// Package domain — значения расходов и их бизнес-валидация без зависимостей от адаптеров.
 package domain
 
-// Category is the stable key used to classify an expense.
+// Category — стабильный ключ, по которому классифицируется расход.
 type Category string
 
-// Category identifiers remain stable because storage and consumers share these keys.
+// Идентификаторы категорий неизменны, так как хранилище и потребители используют одни и те же ключи.
 const (
 	CategoryFood          Category = "food"
 	CategoryTransport     Category = "transport"
@@ -15,11 +15,13 @@ const (
 	CategoryOther         Category = "other"
 )
 
+// categoryOption — пара из ключа категории и её отображаемого названия.
 type categoryOption struct {
 	key   Category
 	label string
 }
 
+// categoryOptions — закрытый упорядоченный каталог категорий.
 var categoryOptions = [...]categoryOption{
 	{key: CategoryFood, label: "еда"},
 	{key: CategoryTransport, label: "транспорт"},
@@ -30,7 +32,9 @@ var categoryOptions = [...]categoryOption{
 	{key: CategoryOther, label: "другое"},
 }
 
-// Label returns the localized display text shared by human-facing surfaces.
+// Принимает: ничего (получатель — категория).
+// Делает: ищет русское название категории в каталоге.
+// Возвращает: название категории; для неизвестной категории — сам ключ как строку.
 func (category Category) Label() string {
 	for _, option := range categoryOptions {
 		if option.key == category {
@@ -40,7 +44,9 @@ func (category Category) Label() string {
 	return string(category)
 }
 
-// IsValid reports whether the category belongs to the closed domain set.
+// Принимает: ничего (получатель — категория).
+// Делает: проверяет, что категория входит в закрытый набор домена.
+// Возвращает: true, если категория известна, иначе false.
 func (category Category) IsValid() bool {
 	for _, option := range categoryOptions {
 		if option.key == category {
@@ -50,7 +56,9 @@ func (category Category) IsValid() bool {
 	return false
 }
 
-// Categories returns the stable category order without exposing the internal catalog.
+// Принимает: ничего.
+// Делает: собирает ключи категорий из каталога в новый срез, не раскрывая внутренний каталог.
+// Возвращает: копию среза категорий в стабильном порядке.
 func Categories() []Category {
 	categories := make([]Category, len(categoryOptions))
 	for index, option := range categoryOptions {

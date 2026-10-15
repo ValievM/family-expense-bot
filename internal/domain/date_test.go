@@ -6,6 +6,9 @@ import (
 	"time"
 )
 
+// Принимает: t — тестовый контекст.
+// Делает: проверяет, что DateOnly возвращает полночь в запрошенном часовом поясе.
+// Возвращает: ничего.
 func TestDateOnlyUsesRequestedLocation(t *testing.T) {
 	location := time.FixedZone("UTC+03", 3*60*60)
 	instant := time.Date(2026, time.January, 1, 22, 30, 0, 0, time.UTC)
@@ -17,6 +20,9 @@ func TestDateOnlyUsesRequestedLocation(t *testing.T) {
 	}
 }
 
+// Принимает: t — тестовый контекст.
+// Делает: проверяет ParseDate на корректных и некорректных строках дат.
+// Возвращает: ничего.
 func TestParseDate(t *testing.T) {
 	location := time.FixedZone("UTC+03", 3*60*60)
 	tests := []struct {
@@ -55,6 +61,9 @@ func TestParseDate(t *testing.T) {
 	}
 }
 
+// Принимает: t — тестовый контекст.
+// Делает: проверяет, что FormatDate использует календарный день запрошенного пояса.
+// Возвращает: ничего.
 func TestFormatDateUsesRequestedLocation(t *testing.T) {
 	location := time.FixedZone("UTC+03", 3*60*60)
 	instant := time.Date(2026, time.January, 1, 22, 30, 0, 0, time.UTC)
@@ -64,6 +73,9 @@ func TestFormatDateUsesRequestedLocation(t *testing.T) {
 	}
 }
 
+// Принимает: t — тестовый контекст.
+// Делает: проверяет, что CompareDates сравнивает локальные календарные дни.
+// Возвращает: ничего.
 func TestCompareDatesComparesLocalCalendarDays(t *testing.T) {
 	location := time.FixedZone("UTC+03", 3*60*60)
 	day := time.Date(2026, time.January, 2, 0, 0, 0, 0, location)

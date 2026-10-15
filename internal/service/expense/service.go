@@ -1,3 +1,4 @@
+// Package expense — координирует сценарии работы с расходами без зависимости от инфраструктуры.
 package expense
 
 import (
@@ -8,14 +9,16 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/domain"
 )
 
-// Service coordinates expense validation, ownership, and persistence.
+// Service — координирует валидацию, владение и сохранение расходов.
 type Service struct {
 	repository Repository
 	clock      Clock
 	location   *time.Location
 }
 
-// NewService wires persistence, time, and calendar behavior; nil clock and location use system time and UTC.
+// Принимает: repository — хранилище; clock — источник времени; location — часовой пояс для календарных дат.
+// Делает: собирает сервис; при nil для clock берёт системное время, при nil для location — UTC.
+// Возвращает: указатель на готовый *Service.
 func NewService(repository Repository, clock Clock, location *time.Location) *Service {
 	if clock == nil {
 		clock = systemClock{}
@@ -26,12 +29,16 @@ func NewService(repository Repository, clock Clock, location *time.Location) *Se
 	return &Service{repository: repository, clock: clock, location: location}
 }
 
-// ForUser returns a scope whose methods cannot select a different owner.
+// Принимает: userID — ID владельца.
+// Делает: создаёт обёртку, методы которой работают только с расходами этого владельца.
+// Возвращает: UserExpenses, привязанный к userID.
 func (service *Service) ForUser(userID int64) UserExpenses {
 	return UserExpenses{service: service, userID: userID}
 }
 
-// Create validates and persists an expense for an unrestricted caller; a zero SpentAt means today.
+// Принимает: ctx — контекст запроса; item — новый расход.
+// Делает: проставляет дату «сегодня», если SpentAt пустой, нормализует её до даты, валидирует, ставит CreatedAt/UpdatedAt из clock и сохраняет в репозитории.
+// Возвращает: созданный расход или ошибку валидации/хранилища.
 func (service *Service) Create(ctx context.Context, item domain.Expense) (domain.Expense, error) {
 	now := service.clock.Now().UTC()
 	if item.SpentAt.IsZero() {
@@ -52,7 +59,9 @@ func (service *Service) Create(ctx context.Context, item domain.Expense) (domain
 	return created, nil
 }
 
-// Get retrieves an expense by its ID for unrestricted callers such as the family panel.
+// Принимает: ctx — контекст запроса; id — ID расхода.
+// Делает: читает расход из репозитория без проверки владельца (для веб-панели).
+// Возвращает: расход или обёрнутую ошибку репозитория (в т.ч. ErrNotFound).
 func (service *Service) Get(ctx context.Context, id int64) (domain.Expense, error) {
 	item, err := service.repository.Get(ctx, id)
 	if err != nil {
@@ -61,7 +70,9 @@ func (service *Service) Get(ctx context.Context, id int64) (domain.Expense, erro
 	return item, nil
 }
 
-// List validates, normalizes, and applies the shared list filters.
+// Принимает: ctx — контекст запроса; filter — фильтры списка.
+// Делает: нормализует и проверяет фильтр (владелец, категория, период), затем запрашивает список в репозитории.
+// Возвращает: список расходов или ошибку фильтра/хранилища.
 func (service *Service) List(ctx context.Context, filter ListFilter) ([]domain.Expense, error) {
 	filter, err := service.normalizeListFilter(filter)
 	if err != nil {
@@ -75,7 +86,9 @@ func (service *Service) List(ctx context.Context, filter ListFilter) ([]domain.E
 	return items, nil
 }
 
-// ListUserIDs returns the distinct owners that currently have expenses.
+// Принимает: ctx — контекст запроса.
+// Делает: запрашивает у репозитория уникальных владельцев расходов.
+// Возвращает: ID пользователей или обёрнутую ошибку хранилища.
 func (service *Service) ListUserIDs(ctx context.Context) ([]int64, error) {
 	userIDs, err := service.repository.ListUserIDs(ctx)
 	if err != nil {
@@ -84,7 +97,9 @@ func (service *Service) ListUserIDs(ctx context.Context) ([]int64, error) {
 	return userIDs, nil
 }
 
-// Update merges a partial update with the stored expense and validates the result once.
+// Принимает: ctx — контекст запроса; id — ID расхода; patch — изменяемые поля.
+// Делает: читает расход без проверки владельца и применяет к нему patch с единой валидацией результата.
+// Возвращает: обновлённый расход или ошибку чтения/валидации/хранилища.
 func (service *Service) Update(ctx context.Context, id int64, patch Patch) (domain.Expense, error) {
 	current, err := service.Get(ctx, id)
 	if err != nil {
@@ -93,7 +108,9 @@ func (service *Service) Update(ctx context.Context, id int64, patch Patch) (doma
 	return service.updateCurrent(ctx, current, patch)
 }
 
-// Delete removes an expense for an unrestricted caller such as the family panel.
+// Принимает: ctx — контекст запроса; id — ID расхода.
+// Делает: удаляет расход без проверки владельца (для веб-панели).
+// Возвращает: nil при успехе или обёрнутую ошибку репозитория.
 func (service *Service) Delete(ctx context.Context, id int64) error {
 	if err := service.repository.Delete(ctx, id); err != nil {
 		return fmt.Errorf("delete expense: %w", err)
@@ -101,6 +118,9 @@ func (service *Service) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
+// Принимает: ctx — контекст запроса; userID — ID владельца; id — ID расхода.
+// Делает: проверяет userID и читает расход, сверяя владельца.
+// Возвращает: расход; domain.ErrInvalidUser при userID <= 0; ErrNotFound, если расход чужой или не найден.
 func (service *Service) getOwned(ctx context.Context, userID, id int64) (domain.Expense, error) {
 	if userID <= 0 {
 		return domain.Expense{}, domain.ErrInvalidUser
@@ -115,6 +135,9 @@ func (service *Service) getOwned(ctx context.Context, userID, id int64) (domain.
 	return item, nil
 }
 
+// Принимает: ctx — контекст запроса; userID — ID владельца; id — ID расхода; patch — изменяемые поля.
+// Делает: сначала проверяет владение расходом, затем применяет patch.
+// Возвращает: обновлённый расход или ошибку владения/валидации/хранилища.
 func (service *Service) updateForUser(ctx context.Context, userID, id int64, patch Patch) (domain.Expense, error) {
 	current, err := service.getOwned(ctx, userID, id)
 	if err != nil {
@@ -123,6 +146,9 @@ func (service *Service) updateForUser(ctx context.Context, userID, id int64, pat
 	return service.updateCurrent(ctx, current, patch)
 }
 
+// Принимает: ctx — контекст запроса; current — текущий расход; patch — изменяемые поля.
+// Делает: переносит заданные поля patch в расход, нормализует дату, валидирует, ставит UpdatedAt из clock и сохраняет.
+// Возвращает: обновлённый расход или ошибку валидации/хранилища.
 func (service *Service) updateCurrent(ctx context.Context, current domain.Expense, patch Patch) (domain.Expense, error) {
 	if patch.Amount != nil {
 		current.Amount = *patch.Amount
@@ -149,6 +175,9 @@ func (service *Service) updateCurrent(ctx context.Context, current domain.Expens
 	return updated, nil
 }
 
+// Принимает: ctx — контекст запроса; userID — ID владельца; id — ID расхода.
+// Делает: проверяет владение расходом и только затем удаляет его.
+// Возвращает: nil при успехе или ошибку владения/хранилища.
 func (service *Service) deleteForUser(ctx context.Context, userID, id int64) error {
 	if _, err := service.getOwned(ctx, userID, id); err != nil {
 		return err
@@ -159,6 +188,9 @@ func (service *Service) deleteForUser(ctx context.Context, userID, id int64) err
 	return nil
 }
 
+// Принимает: filter — исходный фильтр списка.
+// Делает: проверяет владельца, категорию и даты, приводит From/To к календарной дате в часовом поясе сервиса и сверяет порядок границ.
+// Возвращает: нормализованный фильтр или ErrInvalidUser/ErrUnknownCategory/ErrInvalidDate/ErrInvalidPeriod.
 func (service *Service) normalizeListFilter(filter ListFilter) (ListFilter, error) {
 	if filter.UserID != nil && *filter.UserID <= 0 {
 		return ListFilter{}, domain.ErrInvalidUser
@@ -186,6 +218,9 @@ func (service *Service) normalizeListFilter(filter ListFilter) (ListFilter, erro
 	return filter, nil
 }
 
+// Принимает: value — момент времени.
+// Делает: приводит время к календарной дате в часовом поясе сервиса; нулевое значение не трогает.
+// Возвращает: нормализованное время.
 func (service *Service) normalizeDate(value time.Time) time.Time {
 	if value.IsZero() {
 		return value

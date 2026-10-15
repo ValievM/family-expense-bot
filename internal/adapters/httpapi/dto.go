@@ -6,7 +6,7 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/domain"
 )
 
-// expenseResponse is the wire form of an expense; Amount is expressed in kopecks.
+// expenseResponse — JSON-представление расхода, Amount в копейках.
 type expenseResponse struct {
 	ID            int64     `json:"id"`
 	UserID        int64     `json:"user_id"`
@@ -40,7 +40,7 @@ type createExpenseRequest struct {
 	Comment  string  `json:"comment"`
 }
 
-// updateExpenseRequest uses pointers so an absent field differs from an explicit zero value.
+// updateExpenseRequest использует указатели, чтобы отличать отсутствующее поле от явного нулевого значения.
 type updateExpenseRequest struct {
 	Amount   *int64  `json:"amount"`
 	Category *string `json:"category"`
@@ -48,6 +48,9 @@ type updateExpenseRequest struct {
 	Comment  *string `json:"comment"`
 }
 
+// Принимает: item — доменный расход.
+// Делает: переводит расход в JSON-представление, категорию превращает в ключ и подпись, дату форматирует в часовом поясе сервера.
+// Возвращает: expenseResponse.
 func (server *Server) toResponse(item domain.Expense) expenseResponse {
 	return expenseResponse{
 		ID:            item.ID,

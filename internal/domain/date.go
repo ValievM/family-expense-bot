@@ -2,9 +2,12 @@ package domain
 
 import "time"
 
+// dateLayout — формат даты YYYY-MM-DD в стиле time.Format.
 const dateLayout = "2006-01-02"
 
-// DateOnly returns local midnight for the instant in location; nil uses UTC.
+// Принимает: value — момент времени; location — часовой пояс (nil означает UTC).
+// Делает: переводит момент в указанный пояс и обнуляет время суток.
+// Возвращает: локальную полночь того же календарного дня в location.
 func DateOnly(value time.Time, location *time.Location) time.Time {
 	location = effectiveLocation(location)
 	local := value.In(location)
@@ -12,7 +15,9 @@ func DateOnly(value time.Time, location *time.Location) time.Time {
 	return time.Date(year, month, day, 0, 0, 0, 0, location)
 }
 
-// ParseDate parses a zero-padded YYYY-MM-DD date in location; nil uses UTC.
+// Принимает: value — строка даты YYYY-MM-DD с ведущими нулями; location — часовой пояс (nil означает UTC).
+// Делает: разбирает строку в location и отвергает невозможные даты, год меньше 1 и формат без нулевого заполнения.
+// Возвращает: локальную полночь указанной даты или ErrInvalidDate при неверном значении.
 func ParseDate(value string, location *time.Location) (time.Time, error) {
 	location = effectiveLocation(location)
 	parsed, err := time.ParseInLocation(dateLayout, value, location)
@@ -22,12 +27,16 @@ func ParseDate(value string, location *time.Location) (time.Time, error) {
 	return DateOnly(parsed, location), nil
 }
 
-// FormatDate renders the local calendar day as YYYY-MM-DD; nil uses UTC.
+// Принимает: value — момент времени; location — часовой пояс (nil означает UTC).
+// Делает: приводит момент к локальному календарному дню в location и форматирует его.
+// Возвращает: строку вида YYYY-MM-DD.
 func FormatDate(value time.Time, location *time.Location) string {
 	return DateOnly(value, location).Format(dateLayout)
 }
 
-// CompareDates compares calendar days in location and returns -1, 0, or 1.
+// Принимает: left, right — сравниваемые моменты; location — часовой пояс (nil означает UTC).
+// Делает: сравнивает только календарные дни в location, игнорируя время суток.
+// Возвращает: -1, если left раньше right; 1, если позже; 0, если дни совпадают.
 func CompareDates(left, right time.Time, location *time.Location) int {
 	location = effectiveLocation(location)
 	leftDay := DateOnly(left, location)
@@ -42,6 +51,9 @@ func CompareDates(left, right time.Time, location *time.Location) int {
 	}
 }
 
+// Принимает: value — проверяемое время.
+// Делает: проверяет, что значение не нулевое и время суток равно 00:00:00.000000000.
+// Возвращает: true, если значение является датой без времени, иначе false.
 func isDateOnly(value time.Time) bool {
 	if value.IsZero() {
 		return false
@@ -50,6 +62,9 @@ func isDateOnly(value time.Time) bool {
 	return hour == 0 && minute == 0 && second == 0 && value.Nanosecond() == 0
 }
 
+// Принимает: location — часовой пояс или nil.
+// Делает: подставляет UTC вместо nil.
+// Возвращает: переданный пояс либо time.UTC.
 func effectiveLocation(location *time.Location) *time.Location {
 	if location == nil {
 		return time.UTC

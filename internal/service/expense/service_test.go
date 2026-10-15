@@ -1,4 +1,4 @@
-// Package expense_test exercises expense use cases through their consumer contract.
+// Package expense_test — проверяет сценарии работы с расходами через контракт потребителя.
 package expense_test
 
 import (
@@ -12,6 +12,9 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/service/expense"
 )
 
+// Принимает: t — тестовый контекст.
+// Делает: проверяет, что Create ставит CreatedAt и UpdatedAt из clock в UTC.
+// Возвращает: ничего.
 func TestCreateStampsTimestampsFromClock(t *testing.T) {
 	now := time.Date(2026, time.January, 2, 15, 4, 5, 6, time.FixedZone("UTC+03", 3*60*60))
 	repository := newFakeRepository()
@@ -26,6 +29,9 @@ func TestCreateStampsTimestampsFromClock(t *testing.T) {
 	}
 }
 
+// Принимает: t — тестовый контекст.
+// Делает: проверяет, что Update сливает patch с сохранённым расходом, сохраняет CreatedAt и обновляет UpdatedAt.
+// Возвращает: ничего.
 func TestUpdateMergesPatchAndStampsUpdateTime(t *testing.T) {
 	createdAt := time.Date(2025, time.March, 1, 8, 0, 0, 0, time.UTC)
 	stored := validExpense(7, 42, 100)
@@ -52,6 +58,9 @@ func TestUpdateMergesPatchAndStampsUpdateTime(t *testing.T) {
 	}
 }
 
+// Принимает: t — тестовый контекст.
+// Делает: проверяет, что Update с невалидным итогом возвращает ErrInvalidAmount и не меняет сохранённую запись.
+// Возвращает: ничего.
 func TestUpdateRejectsInvalidMergedExpenseWithoutPersistence(t *testing.T) {
 	stored := validExpense(7, 42, 100)
 	repository := newFakeRepository(stored)
@@ -66,6 +75,9 @@ func TestUpdateRejectsInvalidMergedExpenseWithoutPersistence(t *testing.T) {
 	}
 }
 
+// Принимает: t — тестовый контекст.
+// Делает: проверяет, что UserExpenses не читает, не меняет и не удаляет чужие расходы (ErrNotFound).
+// Возвращает: ничего.
 func TestUserExpensesCannotReadOrChangeForeignExpenses(t *testing.T) {
 	stored := validExpense(8, 42, 100)
 	repository := newFakeRepository(stored)
@@ -90,6 +102,9 @@ func TestUserExpensesCannotReadOrChangeForeignExpenses(t *testing.T) {
 	}
 }
 
+// Принимает: t — тестовый контекст.
+// Делает: проверяет, что Create и List в UserExpenses привязаны к владельцу области и игнорируют чужой UserID.
+// Возвращает: ничего.
 func TestUserExpensesCreateAndListBindOwner(t *testing.T) {
 	repository := newFakeRepository(validExpense(8, 1, 200))
 	service := expense.NewService(repository, &fakeClock{now: time.Now()}, time.UTC)
@@ -112,6 +127,9 @@ func TestUserExpensesCreateAndListBindOwner(t *testing.T) {
 	}
 }
 
+// Принимает: t — тестовый контекст.
+// Делает: проверяет, что Update в UserExpenses сохраняет владельца и время создания.
+// Возвращает: ничего.
 func TestUserExpensesUpdatePreservesOwnerAndCreationTime(t *testing.T) {
 	createdAt := time.Date(2025, time.March, 1, 8, 0, 0, 0, time.UTC)
 	stored := validExpense(7, 42, 100)
@@ -130,6 +148,9 @@ func TestUserExpensesUpdatePreservesOwnerAndCreationTime(t *testing.T) {
 	}
 }
 
+// Принимает: t — тестовый контекст.
+// Делает: проверяет, что List сначала приводит границы к датам, поэтому период в пределах одного дня допустим.
+// Возвращает: ничего.
 func TestListNormalizesDatesBeforeCheckingPeriod(t *testing.T) {
 	location := time.FixedZone("UTC+03", 3*60*60)
 	spentAt := time.Date(2026, time.January, 3, 12, 0, 0, 0, location)
@@ -152,6 +173,9 @@ func TestListNormalizesDatesBeforeCheckingPeriod(t *testing.T) {
 	}
 }
 
+// Принимает: t — тестовый контекст.
+// Делает: проверяет, что List возвращает ErrInvalidPeriod для обратного периода и не обращается к репозиторию.
+// Возвращает: ничего.
 func TestListRejectsReversedCalendarPeriod(t *testing.T) {
 	location := time.FixedZone("UTC+03", 3*60*60)
 	repository := newFakeRepository()
@@ -167,6 +191,9 @@ func TestListRejectsReversedCalendarPeriod(t *testing.T) {
 	}
 }
 
+// Принимает: t — тестовый контекст.
+// Делает: проверяет, что ListUserIDs возвращает уникальных владельцев по возрастанию.
+// Возвращает: ничего.
 func TestListUserIDsReturnsUniqueOwners(t *testing.T) {
 	repository := newFakeRepository(
 		validExpense(9, 1, 100),
@@ -184,14 +211,19 @@ func TestListUserIDsReturnsUniqueOwners(t *testing.T) {
 	}
 }
 
+// fakeClock — тестовые часы с фиксированным временем.
 type fakeClock struct {
 	now time.Time
 }
 
+// Принимает: ничего.
+// Делает: отдаёт зафиксированное время.
+// Возвращает: заданное в now время.
 func (clock *fakeClock) Now() time.Time {
 	return clock.now
 }
 
+// fakeRepository — in-memory реализация Repository для тестов.
 type fakeRepository struct {
 	records    map[int64]domain.Expense
 	nextID     int64
@@ -199,6 +231,9 @@ type fakeRepository struct {
 	lastFilter expense.ListFilter
 }
 
+// Принимает: expenses — начальные записи.
+// Делает: создаёт in-memory репозиторий, присваивая ID записям без него и поддерживая счётчик nextID.
+// Возвращает: указатель на *fakeRepository.
 func newFakeRepository(expenses ...domain.Expense) *fakeRepository {
 	repository := &fakeRepository{records: make(map[int64]domain.Expense)}
 	for _, item := range expenses {
@@ -213,6 +248,9 @@ func newFakeRepository(expenses ...domain.Expense) *fakeRepository {
 	return repository
 }
 
+// Принимает: _ — контекст (не используется); item — новый расход.
+// Делает: присваивает следующий ID и сохраняет запись в памяти.
+// Возвращает: сохранённый расход и nil.
 func (repository *fakeRepository) Create(_ context.Context, item domain.Expense) (domain.Expense, error) {
 	repository.nextID++
 	item.ID = repository.nextID
@@ -220,6 +258,9 @@ func (repository *fakeRepository) Create(_ context.Context, item domain.Expense)
 	return item, nil
 }
 
+// Принимает: _ — контекст (не используется); id — ID расхода.
+// Делает: ищет запись в памяти.
+// Возвращает: расход или ErrNotFound.
 func (repository *fakeRepository) Get(_ context.Context, id int64) (domain.Expense, error) {
 	item, exists := repository.records[id]
 	if !exists {
@@ -228,6 +269,9 @@ func (repository *fakeRepository) Get(_ context.Context, id int64) (domain.Expen
 	return item, nil
 }
 
+// Принимает: _ — контекст (не используется); filter — фильтры списка.
+// Делает: считает вызовы, запоминает последний фильтр, фильтрует записи по владельцу, категории и датам и сортирует по SpentAt по убыванию.
+// Возвращает: список расходов и nil.
 func (repository *fakeRepository) List(_ context.Context, filter expense.ListFilter) ([]domain.Expense, error) {
 	repository.listCalls++
 	repository.lastFilter = filter
@@ -253,6 +297,9 @@ func (repository *fakeRepository) List(_ context.Context, filter expense.ListFil
 	return items, nil
 }
 
+// Принимает: _ — контекст (не используется).
+// Делает: собирает уникальные UserID из записей и сортирует по возрастанию.
+// Возвращает: список ID и nil.
 func (repository *fakeRepository) ListUserIDs(_ context.Context) ([]int64, error) {
 	seen := make(map[int64]struct{}, len(repository.records))
 	userIDs := make([]int64, 0, len(repository.records))
@@ -267,6 +314,9 @@ func (repository *fakeRepository) ListUserIDs(_ context.Context) ([]int64, error
 	return userIDs, nil
 }
 
+// Принимает: _ — контекст (не используется); item — расход с новыми значениями.
+// Делает: заменяет существующую запись в памяти.
+// Возвращает: обновлённый расход или ErrNotFound.
 func (repository *fakeRepository) Update(_ context.Context, item domain.Expense) (domain.Expense, error) {
 	if _, exists := repository.records[item.ID]; !exists {
 		return domain.Expense{}, expense.ErrNotFound
@@ -275,6 +325,9 @@ func (repository *fakeRepository) Update(_ context.Context, item domain.Expense)
 	return item, nil
 }
 
+// Принимает: _ — контекст (не используется); id — ID расхода.
+// Делает: удаляет запись из памяти.
+// Возвращает: nil или ErrNotFound.
 func (repository *fakeRepository) Delete(_ context.Context, id int64) error {
 	if _, exists := repository.records[id]; !exists {
 		return expense.ErrNotFound
@@ -283,6 +336,9 @@ func (repository *fakeRepository) Delete(_ context.Context, id int64) error {
 	return nil
 }
 
+// Принимает: userID — владелец; id — ID расхода; amount — сумма в копейках.
+// Делает: собирает валидный расход категории food с датой 2026-01-02.
+// Возвращает: заполненный domain.Expense.
 func validExpense(userID, id, amount int64) domain.Expense {
 	return domain.Expense{
 		ID:       id,
@@ -293,6 +349,9 @@ func validExpense(userID, id, amount int64) domain.Expense {
 	}
 }
 
+// Принимает: t — тестовый контекст.
+// Делает: проверяет, что пустая дата в Create заменяется сегодняшней датой в настроенном часовом поясе.
+// Возвращает: ничего.
 func TestCreateDefaultsOmittedDateToTodayInConfiguredLocation(t *testing.T) {
 	moscow := time.FixedZone("UTC+03", 3*60*60)
 	// 22:30 UTC on 1 Jan is already 2 Jan in Moscow.

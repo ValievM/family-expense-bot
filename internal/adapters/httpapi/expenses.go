@@ -9,10 +9,16 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/service/expense"
 )
 
+// Принимает: w — writer ответа, второй параметр (запрос) не используется.
+// Делает: отвечает 200 со статусом ok для проверки живости.
+// Возвращает: ничего.
 func (server *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+// Принимает: w — writer ответа, второй параметр (запрос) не используется.
+// Делает: отдаёт список всех категорий из домена с ключом и подписью.
+// Возвращает: ничего.
 func (server *Server) handleListCategories(w http.ResponseWriter, _ *http.Request) {
 	categories := domain.Categories()
 	items := make([]categoryResponse, 0, len(categories))
@@ -22,6 +28,9 @@ func (server *Server) handleListCategories(w http.ResponseWriter, _ *http.Reques
 	writeJSON(w, http.StatusOK, listResponse[categoryResponse]{Items: items})
 }
 
+// Принимает: w — writer ответа, r — входящий запрос.
+// Делает: получает идентификаторы пользователей из сервиса и отдаёт их списком.
+// Возвращает: ничего; при ошибке сервиса пишет её через writeError.
 func (server *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	userIDs, err := server.expenses.ListUserIDs(r.Context())
 	if err != nil {
@@ -35,6 +44,9 @@ func (server *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, listResponse[userResponse]{Items: items})
 }
 
+// Принимает: w — writer ответа, r — входящий запрос с query-фильтрами.
+// Делает: разбирает фильтр из query, запрашивает расходы у сервиса и отдаёт их списком (пустой список, не null).
+// Возвращает: ничего; при ошибке разбора или сервиса пишет её через writeError.
 func (server *Server) handleListExpenses(w http.ResponseWriter, r *http.Request) {
 	filter, err := server.parseListFilter(r)
 	if err != nil {
@@ -53,6 +65,9 @@ func (server *Server) handleListExpenses(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, listResponse[expenseResponse]{Items: items})
 }
 
+// Принимает: w — writer ответа, r — входящий запрос с JSON-телом.
+// Делает: декодирует тело, разбирает необязательную дату и создаёт расход через сервис; при отсутствии даты оставляет её значение по умолчанию сервису.
+// Возвращает: ничего; при успехе пишет 201 и созданный расход, иначе ошибку через writeError.
 func (server *Server) handleCreateExpense(w http.ResponseWriter, r *http.Request) {
 	var request createExpenseRequest
 	if err := decodeJSON(w, r, &request); err != nil {
@@ -82,6 +97,9 @@ func (server *Server) handleCreateExpense(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusCreated, server.toResponse(created))
 }
 
+// Принимает: w — writer ответа, r — входящий запрос с id в пути и JSON-телом.
+// Делает: собирает частичный patch только из переданных полей и обновляет расход через сервис.
+// Возвращает: ничего; при успехе пишет 200 и обновлённый расход, иначе ошибку через writeError.
 func (server *Server) handleUpdateExpense(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r)
 	if err != nil {
@@ -112,6 +130,9 @@ func (server *Server) handleUpdateExpense(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, server.toResponse(updated))
 }
 
+// Принимает: w — writer ответа, r — входящий запрос с id в пути.
+// Делает: разбирает id и удаляет расход через сервис.
+// Возвращает: ничего; при успехе пишет 204 без тела, иначе ошибку через writeError.
 func (server *Server) handleDeleteExpense(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r)
 	if err != nil {
@@ -125,6 +146,9 @@ func (server *Server) handleDeleteExpense(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// Принимает: r — входящий запрос с query-параметрами user_id, category, from, to.
+// Делает: строит expense.ListFilter из непустых параметров, даты разбирает в часовом поясе сервера.
+// Возвращает: заполненный фильтр; requestError при нечисловом user_id или неверной дате.
 func (server *Server) parseListFilter(r *http.Request) (expense.ListFilter, error) {
 	query := r.URL.Query()
 	var filter expense.ListFilter
@@ -152,6 +176,9 @@ func (server *Server) parseListFilter(r *http.Request) (expense.ListFilter, erro
 	return filter, nil
 }
 
+// Принимает: raw — необязательная строка даты формата YYYY-MM-DD.
+// Делает: разбирает дату в часовом поясе сервера, если она передана.
+// Возвращает: указатель на дату или nil, если raw равен nil; requestError invalid_date при неверном формате.
 func (server *Server) parseOptionalDate(raw *string) (*time.Time, error) {
 	if raw == nil {
 		return nil, nil
@@ -163,6 +190,9 @@ func (server *Server) parseOptionalDate(raw *string) (*time.Time, error) {
 	return &parsed, nil
 }
 
+// Принимает: r — входящий запрос с path-параметром id.
+// Делает: читает id расхода из пути и проверяет, что это положительное целое.
+// Возвращает: id; requestError invalid_id при ошибке разбора или значении не больше нуля.
 func parseID(r *http.Request) (int64, error) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil || id <= 0 {
@@ -171,6 +201,9 @@ func parseID(r *http.Request) (int64, error) {
 	return id, nil
 }
 
+// Принимает: value — строка из query.
+// Делает: превращает пустую строку в отсутствие значения.
+// Возвращает: nil для пустой строки, иначе указатель на копию value.
 func optionalString(value string) *string {
 	if value == "" {
 		return nil
