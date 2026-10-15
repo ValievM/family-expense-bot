@@ -39,8 +39,9 @@
 cmd/server/main.go            — композиция зависимостей (единственное место, где всё соединяется)
 internal/
   domain/                     — Expense, Category, ошибки, валидация. Ничего не импортирует.
-  expense/                    — сервис (use cases) + порт Repository. Знает только domain.
-  agent/                      — LLM-агент: tools, цикл, промпт. Зависит от expense и порта LLM.
+  service/
+    expense/                  — use cases + порт Repository. Знает только domain.
+    agent/                    — LLM-агент: tools, цикл, промпт. Зависит от service/expense и порта LLM.
   adapters/
     postgres/                 — реализация Repository
     llm/                      — OpenAI-совместимый клиент
@@ -51,7 +52,7 @@ migrations/
 web/                          — фронтенд
 ```
 
-Правило зависимостей: стрелки только внутрь (`adapters → expense/agent → domain`). Интерфейсы объявляет тот, кто их использует.
+Правило зависимостей: стрелки только внутрь (`adapters → service → domain`). Агент находится в `internal/service/agent`; интерфейсы объявляет тот, кто их использует.
 
 Как применяем принципы (чтобы это можно было показать ревьюеру):
 
