@@ -42,6 +42,7 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 		{"bad allowed id", map[string]string{"DATABASE_URL": "x", "ALLOWED_USER_IDS": "1,abc"}, []string{"ALLOWED_USER_IDS"}},
 		{"negative allowed id", map[string]string{"DATABASE_URL": "x", "ALLOWED_USER_IDS": "-5"}, []string{"ALLOWED_USER_IDS"}},
 		{"bot without openai key", map[string]string{"DATABASE_URL": "x", "TELEGRAM_BOT_TOKEN": "t"}, []string{"LLM_API_KEY"}},
+		{"unknown auth mode", map[string]string{"DATABASE_URL": "x", "LLM_AUTH": "magic"}, []string{"LLM_AUTH"}},
 		{"several problems", map[string]string{"TZ": "Mars/Base"}, []string{"DATABASE_URL", "TZ"}},
 	}
 
@@ -91,5 +92,19 @@ func TestEmptyAllowListAllowsEveryone(t *testing.T) {
 
 	if !cfg.IsUserAllowed(123456) {
 		t.Error("IsUserAllowed() = false, want true when ALLOWED_USER_IDS is empty")
+	}
+}
+
+// Принимает: t — тестовый контекст.
+// Делает: проверяет режим подписки: ключ не нужен, модель по умолчанию пустая (выбирается из списка аккаунта), файл входа берётся по умолчанию.
+// Возвращает: ничего.
+func TestLoadOAuthModeNeedsNoKeyAndNoDefaultModel(t *testing.T) {
+	cfg, err := config.Load(env(map[string]string{"DATABASE_URL": "x", "TELEGRAM_BOT_TOKEN": "t", "LLM_AUTH": "OAuth"}))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.LLMAuth != config.AuthOAuth || cfg.LLMModel != "" || cfg.LLMAuthFile != "data/chatgpt-auth.json" {
+		t.Errorf("cfg = %+v", cfg)
 	}
 }
