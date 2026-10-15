@@ -5,7 +5,7 @@ import (
 	"context"
 
 	"github.com/ValievM/family-expense-bot/internal/domain"
-	"github.com/ValievM/family-expense-bot/internal/expense"
+	"github.com/ValievM/family-expense-bot/internal/service/expense"
 )
 
 // UserExpenses exposes only operations scoped to the Telegram user's identity.

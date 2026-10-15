@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/ValievM/family-expense-bot/internal/domain"
-	"github.com/ValievM/family-expense-bot/internal/expense"
+	"github.com/ValievM/family-expense-bot/internal/service/expense"
 )
 
 func TestCreateStampsTimestampsFromClock(t *testing.T) {
