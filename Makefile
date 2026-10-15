@@ -1,15 +1,16 @@
 GO ?= go
+GO_PACKAGES = ./cmd/... ./internal/... ./migrations/...
 GOLANGCI_LINT ?= golangci-lint
 
 .PHONY: lint test test-integration
 
 lint:
 	@test -z "$$(gofmt -l cmd internal migrations)" || { gofmt -l cmd internal migrations; exit 1; }
-	$(GO) vet ./...
-	$(GOLANGCI_LINT) run ./...
+	$(GO) vet $(GO_PACKAGES)
+	$(GOLANGCI_LINT) run $(GO_PACKAGES)
 
 test:
-	$(GO) test ./...
+	$(GO) test $(GO_PACKAGES)
 
 test-integration:
 	@set -e; \
