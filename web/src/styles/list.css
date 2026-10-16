@@ -1,0 +1,450 @@
+/* Дни: крупная дата терракотой на полях, сумма дня справа на линейке */
+.list-wrap {
+  transition: opacity var(--dur) var(--ease);
+}
+
+.list-wrap.is-refreshing {
+  opacity: 0.6;
+}
+
+.list {
+  position: relative;
+  padding-left: var(--margin-col);
+}
+
+.day-head {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  min-height: 62px;
+  padding: 30px 0 12px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.day-head h3 {
+  position: absolute;
+  left: calc(-1 * var(--margin-col));
+  top: 25px;
+  display: flex;
+  flex-direction: column;
+  font-weight: 400;
+  font-size: 24px;
+  color: var(--accent);
+}
+
+.day-head h3 b {
+  font-size: 53px;
+  line-height: 1.05;
+  font-weight: 400;
+  letter-spacing: -2px;
+}
+
+.day-head h3 span {
+  font-family: var(--font-body);
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--muted);
+  margin-top: 5px;
+}
+
+.day-head h3 .day-relative {
+  margin-top: 2px;
+  color: var(--accent);
+}
+
+.day-head > .num {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Строка траты */
+.expense {
+  position: relative;
+  display: grid;
+  grid-template-columns: 100px 135px minmax(0, 1fr) 134px 76px;
+  align-items: center;
+  gap: 12px;
+  min-height: 72px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+
+.day-items > .expense:first-child {
+  border-top: 0;
+}
+
+.expense:hover {
+  background: var(--surface);
+}
+
+.person {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.person-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.avatar {
+  --hue: 20;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  background: hsl(var(--hue) var(--avatar-bg));
+  color: hsl(var(--hue) var(--avatar-ink));
+  border: 1px solid hsl(var(--hue) var(--avatar-line));
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.category {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  min-width: 0;
+}
+
+.category svg {
+  width: 16px;
+  height: 16px;
+  color: var(--accent);
+}
+
+.category-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.comment {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  min-width: 0;
+}
+
+.amount {
+  font-weight: 600;
+  text-align: right;
+  font-size: 15px;
+}
+
+.row-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.edit-button {
+  border: 0;
+  background: transparent;
+  width: 36px;
+  height: 36px;
+  min-height: 36px;
+  padding: 8px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+.expense:hover .edit-button:not(.delete-button) {
+  color: var(--accent);
+}
+
+.delete-button:hover:not(:disabled) {
+  color: var(--danger);
+}
+
+/* Короткая подсветка добавленной или изменённой строки */
+.highlight {
+  animation: flash var(--dur-flash) ease-out;
+}
+
+@keyframes flash {
+  from {
+    background: var(--soft);
+    box-shadow: inset 4px 0 var(--accent);
+  }
+  to {
+    background: transparent;
+    box-shadow: inset 0 0 transparent;
+  }
+}
+
+/* Скелетон повторяет размеры настоящих строк */
+.skeleton-bar {
+  display: block;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--skeleton);
+  animation: skeleton-pulse 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes skeleton-pulse {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.45;
+  }
+}
+
+.skeleton .expense {
+  cursor: default;
+}
+
+.skeleton .expense:hover {
+  background: transparent;
+}
+
+.skeleton-avatar {
+  background: var(--skeleton);
+  border-color: transparent;
+}
+
+.skeleton-date {
+  position: absolute;
+  left: calc(-1 * var(--margin-col));
+  top: 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.skeleton-day {
+  width: 46px;
+  height: 44px;
+}
+
+.skeleton-month {
+  width: 64px;
+  height: 10px;
+}
+
+.skeleton-sum {
+  width: 90px;
+  margin-left: auto;
+}
+
+.sk-name {
+  width: 44px;
+}
+
+.sk-cat {
+  width: 90px;
+}
+
+.sk-comment {
+  width: 70%;
+}
+
+.expense:nth-child(3n) .sk-comment {
+  width: 45%;
+}
+
+.expense:nth-child(3n + 1) .sk-comment {
+  width: 58%;
+}
+
+.skeleton-amount {
+  width: 80px;
+  margin-left: auto;
+}
+
+.skeleton-total {
+  width: 200px;
+  height: 40px;
+  margin: 4px 0;
+}
+
+/* Пустые состояния */
+.empty {
+  padding: 64px 24px;
+  margin-top: 24px;
+  text-align: center;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+}
+
+.empty p {
+  margin: 8px auto 20px;
+  max-width: 460px;
+  color: var(--muted);
+}
+
+.empty-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 16px;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.empty-mark svg {
+  width: 22px;
+  height: 22px;
+}
+
+.empty .bot-example {
+  margin-top: -4px;
+}
+
+.bot-example span {
+  display: inline-block;
+  padding: 8px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px 14px 14px 2px;
+  color: var(--ink);
+  font-size: 15px;
+}
+
+/* Удаление видно при наведении или фокусе, чтобы строка оставалась спокойной. */
+@media (min-width: 601px) and (hover: hover) {
+  .expense .delete-button {
+    opacity: 0;
+  }
+
+  .expense:hover .delete-button,
+  .expense:focus-within .delete-button {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 1150px) {
+  :root {
+    --margin-col: 110px;
+  }
+
+  .expense {
+    grid-template-columns: 88px 112px minmax(0, 1fr) 120px 68px;
+    gap: 8px;
+  }
+
+  .edit-button {
+    width: 32px;
+  }
+}
+
+@media (max-width: 850px) {
+  .list {
+    padding-left: 0;
+  }
+
+  .day-head h3 {
+    position: static;
+    flex-direction: row;
+    align-items: baseline;
+    gap: 8px;
+  }
+
+  .day-head h3 b {
+    font-size: 28px;
+    letter-spacing: -1px;
+  }
+
+  .day-head h3 span {
+    font-size: 13px;
+    letter-spacing: 0;
+  }
+
+  .skeleton-date {
+    position: static;
+    flex-direction: row;
+    align-items: baseline;
+  }
+
+  .skeleton-day {
+    height: 28px;
+  }
+}
+
+@media (max-width: 600px) {
+  .day-head {
+    padding-top: 22px;
+    min-height: 0;
+  }
+
+  .day-head h3 {
+    gap: 7px;
+  }
+
+  .day-head h3 b {
+    font-size: 34px;
+  }
+
+  .day-head > .num {
+    font-size: 11px;
+  }
+
+  .expense {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'category amount'
+      'comment comment'
+      'person actions';
+    gap: 9px;
+    min-height: 0;
+    padding: 14px 0;
+    border-top: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .expense .category {
+    grid-area: category;
+  }
+
+  .expense .comment {
+    grid-area: comment;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .expense .person {
+    grid-area: person;
+  }
+
+  .expense .amount {
+    grid-area: amount;
+    font-size: 17px;
+  }
+
+  .row-actions {
+    grid-area: actions;
+  }
+
+  .edit-button {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+    padding: 10px;
+  }
+
+  .skeleton .expense > span:last-child {
+    display: none;
+  }
+
+  .empty {
+    padding: 40px 20px;
+  }
+}

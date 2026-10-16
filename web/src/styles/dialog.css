@@ -1,0 +1,389 @@
+/* Диалоги: форма траты — «лист книги» с терракотовыми полями слева */
+dialog {
+  border: 1px solid var(--line);
+  padding: 0;
+  color: var(--ink);
+  background: var(--surface);
+  border-radius: var(--radius-dialog);
+  width: 600px;
+  max-width: calc(100% - 32px);
+  max-height: calc(100dvh - 48px);
+  box-shadow: var(--shadow-dialog);
+}
+
+dialog[open] {
+  animation: dialog-in var(--dur) var(--ease);
+}
+
+dialog::backdrop {
+  background: var(--backdrop);
+  backdrop-filter: blur(3px);
+}
+
+dialog[open]::backdrop {
+  animation: backdrop-in var(--dur) var(--ease);
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+}
+
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.sheet {
+  width: 800px;
+}
+
+.dialog-shell {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+}
+
+.form-context {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  grid-row: 1 / 3;
+  padding: 30px 24px;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.form-context .eyebrow,
+.form-context p {
+  color: var(--on-accent);
+}
+
+.form-context h3 {
+  font-size: 29px;
+  font-weight: 400;
+  line-height: 1.25;
+  margin: 16px 0;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.form-context p {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.dialog-header {
+  grid-column: 2;
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 28px 28px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.dialog-header .eyebrow {
+  margin-bottom: 8px;
+}
+
+.dialog-header h2 {
+  font-weight: 400;
+  font-size: 27px;
+}
+
+.dialog-header p {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 8px;
+}
+
+.expense-form {
+  grid-column: 2;
+}
+
+.form-body {
+  padding: 22px 28px;
+}
+
+.form-body > .banner {
+  margin: 0 0 20px;
+}
+
+.field {
+  margin-bottom: 20px;
+}
+
+.field:last-child {
+  margin-bottom: 0;
+}
+
+.amount-input {
+  font-size: 30px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.6px;
+}
+
+.new-user-field {
+  margin-top: 10px;
+}
+
+.optional {
+  font-weight: 400;
+}
+
+.read-owner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  background: var(--bg);
+  border-radius: var(--radius);
+  overflow-wrap: anywhere;
+}
+
+.read-owner small {
+  display: block;
+  font-size: 11px;
+}
+
+.category-picks {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+.category-picks legend {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  padding: 0;
+}
+
+.category-picks label {
+  margin: 0;
+  position: relative;
+}
+
+.category-picks input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  min-height: 1px;
+  padding: 0;
+}
+
+.category-picks span {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 9px 11px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 400;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+
+.category-picks span svg {
+  width: 16px;
+  height: 16px;
+}
+
+.category-picks span:hover {
+  background: var(--soft);
+}
+
+.category-picks input:checked + span {
+  background: var(--soft);
+  color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.category-picks input:focus-visible + span {
+  outline: var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.category-picks input[aria-invalid='true'] + span {
+  border-color: var(--danger);
+}
+
+.date-quick {
+  display: flex;
+  gap: 8px;
+  margin-top: 7px;
+}
+
+.date-quick button {
+  font-size: 11px;
+  padding: 4px 8px;
+  min-height: 30px;
+}
+
+.date-quick button[aria-pressed='true'] {
+  background: var(--soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.helper.is-near {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.dialog-footer {
+  padding: 18px 28px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  position: sticky;
+  bottom: 0;
+}
+
+.footer-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* Подтверждение удаления */
+.confirm {
+  width: 480px;
+}
+
+.confirm .dialog-header {
+  grid-column: auto;
+}
+
+.delete-amount {
+  font: 400 34px/1.2 var(--font-head);
+  letter-spacing: -0.8px;
+  color: var(--accent);
+  margin-bottom: 16px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.delete-facts > div {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.delete-facts dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.delete-comment {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.confirm .form-body > .banner {
+  margin: 16px 0 0;
+}
+
+@media (max-width: 600px) {
+  .sheet {
+    position: fixed;
+    inset: 0;
+    margin: 0;
+    width: 100%;
+    max-width: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+    border: 0;
+  }
+
+  .confirm {
+    max-height: calc(100dvh - 32px);
+  }
+
+  .dialog-header {
+    padding: 20px;
+    grid-column: auto;
+  }
+
+  .dialog-header h2 {
+    font-size: 24px;
+  }
+
+  .dialog-header p {
+    font-size: 11px;
+  }
+
+  .dialog-shell {
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+  }
+
+  .form-context {
+    display: none;
+  }
+
+  .expense-form {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+  }
+
+  .form-body {
+    padding: 20px;
+    flex: 1;
+  }
+
+  .dialog-footer {
+    padding: 14px 20px calc(14px + env(safe-area-inset-bottom));
+    gap: 10px;
+  }
+
+  .dialog-footer .footer-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1.5fr;
+    margin: 0;
+  }
+
+  .dialog-footer .danger {
+    padding: 0;
+    border: 0;
+    min-height: 44px;
+  }
+
+  .category-picks span {
+    min-height: 44px;
+    padding: 10px;
+  }
+
+  .date-quick button {
+    min-height: 44px;
+  }
+
+  .delete-facts > div {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}

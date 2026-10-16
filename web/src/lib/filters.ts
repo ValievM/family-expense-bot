@@ -34,3 +34,19 @@ export function filtersToQuery(filters: Filters): string {
 export function hasActiveFilters(filters: Filters): boolean {
   return KEYS.some((k) => filters[k] !== '');
 }
+
+/**
+ * Принимает: трату и фильтры.
+ * Делает: повторяет серверную фильтрацию (границы периода включительно).
+ * Возвращает: true, если трата попадёт в текущую выборку.
+ */
+export function matchesFilters(
+  e: { user_id: number; category: string; spent_at: string },
+  filters: Filters,
+): boolean {
+  if (filters.user_id !== '' && String(e.user_id) !== filters.user_id) return false;
+  if (filters.category !== '' && e.category !== filters.category) return false;
+  if (filters.from !== '' && e.spent_at < filters.from) return false;
+  if (filters.to !== '' && e.spent_at > filters.to) return false;
+  return true;
+}

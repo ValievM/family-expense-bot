@@ -21,6 +21,13 @@ describe('validateForm', () => {
     const r = validateForm({ ...ok, userId: '0', amount: '0', category: '', spentAt: '' }, keys);
     expect(Object.keys(r.errors ?? {}).sort()).toEqual(['amount', 'category', 'spentAt', 'userId']);
   });
+
+  it('enforces the server limits on amount and comment length', () => {
+    expect(validateForm({ ...ok, amount: '1000000000' }, keys).values?.amount).toBe(100_000_000_000);
+    expect(validateForm({ ...ok, amount: '1000000000,01' }, keys).errors?.amount).toBeDefined();
+    expect(validateForm({ ...ok, comment: 'я'.repeat(500) }, keys).values).toBeDefined();
+    expect(validateForm({ ...ok, comment: 'я'.repeat(501) }, keys).errors?.comment).toBeDefined();
+  });
 });
 
 describe('totalKopecks', () => {
