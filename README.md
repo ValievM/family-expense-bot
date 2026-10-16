@@ -55,29 +55,26 @@ docker compose up -d --build --wait && scripts/smoke.sh
 | `WEB_PORT` | `8080` | порт панели на хосте |
 | `POSTGRES_PASSWORD` | `expenses` | пароль БД внутри compose (наружу порт БД не открыт) |
 
-**Готовый пример `.env`** (GLM через ключ API; значения в `<...>` ваши):
+**Минимальный `.env`** (значения в `<...>` ваши):
 
 ```env
 TELEGRAM_BOT_TOKEN=<токен от @BotFather>
-LLM_BASE_URL=https://api.z.ai/api/paas/v4
 LLM_API_KEY=<ключ>
-LLM_MODEL=glm-5.3-flash
-TZ=Europe/Moscow
 ```
 
-Остальные переменные необязательны: `DATABASE_URL`, `HTTP_ADDR` и пароль базы compose задаёт сам. Файл `.env.example` содержит те же строки с пустыми значениями.
+Всё остальное необязательно и имеет значения по умолчанию из таблицы выше (по умолчанию GLM `glm-5.3-flash`). `DATABASE_URL`, `HTTP_ADDR` и пароль базы compose задаёт сам. В `.env.example` те же строки и закомментированные необязательные.
 
-**Другая модель или провайдер без правок кода.** Например, GLM (Z.ai):
-
-```env
-LLM_BASE_URL=https://api.z.ai/api/paas/v4
-LLM_API_KEY=ключ
-LLM_MODEL=glm-5.3-flash
-```
-
-(для ключей тарифа Coding Plan адрес `https://api.z.ai/api/coding/paas/v4`), или локальная Ollama:
+**Другой провайдер или модель без правок кода**: достаточно добавить в `.env`:
 
 ```env
+# ключ тарифа GLM Coding Plan
+LLM_BASE_URL=https://api.z.ai/api/coding/paas/v4
+
+# или OpenAI
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_MODEL=gpt-4.1-mini
+
+# или локальная Ollama (ключ не нужен)
 LLM_BASE_URL=http://host.docker.internal:11434/v1
 LLM_MODEL=qwen2.5:7b
 ```
