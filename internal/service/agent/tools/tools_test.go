@@ -177,3 +177,21 @@ func TestAddAcceptsExactAmountsInSeveralForms(t *testing.T) {
 		}
 	}
 }
+
+// Проверяет: в схемах add_expense и update_expense сумма объявлена строкой, а не числом.
+func TestAmountIsDeclaredAsStringInSchemas(t *testing.T) {
+	for _, name := range []string{"add_expense", "update_expense"} {
+		var schema struct {
+			Properties map[string]struct {
+				Type string `json:"type"`
+			} `json:"properties"`
+		}
+		if err := json.Unmarshal(tool(t, name).Spec().Parameters, &schema); err != nil {
+			t.Fatal(err)
+		}
+
+		if got := schema.Properties["amount"].Type; got != "string" {
+			t.Errorf("%s: amount type = %q, want string", name, got)
+		}
+	}
+}

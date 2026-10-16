@@ -91,3 +91,12 @@ func (amount *amountText) UnmarshalJSON(data []byte) error {
 	*amount = amountText(data)
 	return nil
 }
+
+// amountProperty описывает свойство суммы: строка с рублями, чтобы число не превращалось в float по дороге.
+func amountProperty(description string) map[string]any {
+	return map[string]any{
+		"type":        "string",
+		"pattern":     `^\d+([.,]\d{1,2})?$`,
+		"description": description + ` Строкой в рублях, не более двух знаков после запятой: "350", "99.90".`,
+	}
+}

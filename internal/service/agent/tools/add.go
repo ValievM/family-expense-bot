@@ -23,7 +23,7 @@ func (tool addExpenseTool) Spec() ports.ToolSpec {
 		Name:        "add_expense",
 		Description: "Добавить трату пользователя. Дата необязательна: по умолчанию сегодня.",
 		Parameters: objectSchema(map[string]any{
-			"amount":   map[string]any{"type": "number", "description": "Сумма в рублях, например 350 или 99.90."},
+			"amount":   amountProperty("Сумма траты."),
 			"category": categoryProperty(),
 			"date":     dateProperty("Дата траты."),
 			"comment":  map[string]any{"type": "string", "description": "Короткое пояснение, например «кофе»."},

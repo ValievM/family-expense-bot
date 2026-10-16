@@ -25,7 +25,7 @@ func (tool updateExpenseTool) Spec() ports.ToolSpec {
 		Description: "Изменить трату пользователя по id. Передавай только изменяемые поля. id берётся из list_expenses.",
 		Parameters: objectSchema(map[string]any{
 			"id":       map[string]any{"type": "integer", "description": "id траты из list_expenses."},
-			"amount":   map[string]any{"type": "number", "description": "Новая сумма в рублях."},
+			"amount":   amountProperty("Новая сумма траты."),
 			"category": categoryProperty(),
 			"date":     dateProperty("Новая дата траты."),
 			"comment":  map[string]any{"type": "string", "description": "Новый комментарий; пустая строка очищает его."},
