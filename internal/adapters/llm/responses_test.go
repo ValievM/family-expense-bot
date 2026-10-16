@@ -192,3 +192,37 @@ func TestResponsesRetryPolicy(t *testing.T) {
 		})
 	}
 }
+
+// Проверяет: временный сбой потока (событие error без деталей, server_error) повторяется и затем успешно проходит, а окончательный отказ нет.
+func TestResponsesRetriesTransientStreamFailures(t *testing.T) {
+	tests := []struct {
+		name      string
+		failure   string
+		wantCalls int32
+		wantErr   bool
+	}{
+		{"error event without details", `{"type":"error"}`, 2, false},
+		{"server_error code", `{"type":"response.failed","response":{"error":{"code":"server_error","message":"oops"}}}`, 2, false},
+		{"permanent refusal", `{"type":"response.failed","response":{"error":{"code":"subscription_sharing_usage_limit_exceeded","message":"limit"}}}`, 1, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var calls atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				if calls.Add(1) == 1 {
+					writeEvents(w, tt.failure)
+					return
+				}
+				writeEvents(w, `{"type":"response.output_text.delta","delta":"ok"}`, `{"type":"response.completed"}`)
+			}))
+			defer server.Close()
+
+			reply, err := newResponsesTestClient(server.URL, "m").Complete(context.Background(), ports.Request{})
+
+			if (err != nil) != tt.wantErr || calls.Load() != tt.wantCalls {
+				t.Errorf("reply = %+v, err = %v, calls = %d; want err=%v after %d calls", reply, err, calls.Load(), tt.wantErr, tt.wantCalls)
+			}
+		})
+	}
+}

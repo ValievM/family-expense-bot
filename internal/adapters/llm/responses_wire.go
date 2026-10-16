@@ -57,8 +57,10 @@ type streamEvent struct {
 			Reason string `json:"reason"`
 		} `json:"incomplete_details"`
 	} `json:"response"`
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Error   *streamError `json:"error"`
+	Code    string       `json:"code"`
+	Message string       `json:"message"`
+	raw     string
 }
 
 type streamError struct {
@@ -112,6 +114,7 @@ func parseEvent(data string) (streamEvent, error) {
 	if err := json.Unmarshal([]byte(data), &event); err != nil {
 		return streamEvent{}, fmt.Errorf("decode responses event: %w", err)
 	}
+	event.raw = data
 	return event, nil
 }
 
@@ -120,6 +123,9 @@ func parseEvent(data string) (streamEvent, error) {
 // Возвращает: *APIError с кодом и текстом.
 func (event streamEvent) failure() error {
 	code, message := event.Code, event.Message
+	if event.Error != nil {
+		code, message = event.Error.Code, event.Error.Message
+	}
 	if event.Response.Error != nil {
 		code, message = event.Response.Error.Code, event.Response.Error.Message
 	}
@@ -130,6 +136,32 @@ func (event streamEvent) failure() error {
 	if code == "" {
 		code = event.Type
 	}
-	// HTTP-статус уже был 200, поэтому сбой потока не считается временным и не повторяется.
-	return &APIError{Status: http.StatusOK, Message: code + ": " + message}
+	if message == "" {
+		// Провайдер прислал событие в неизвестной форме: оставляем кусок сырого текста, чтобы причину можно было найти по логу.
+		message = truncateRaw(event.raw)
+	}
+	status := http.StatusOK // сбой потока приходит уже после HTTP 200 и по умолчанию не повторяется
+	if isTransientStreamFailure(code) {
+		status = http.StatusServiceUnavailable
+	}
+	return &APIError{Status: status, Message: code + ": " + message}
+}
+
+func truncateRaw(raw string) string {
+	const limit = 300
+	if len(raw) > limit {
+		return raw[:limit] + "..."
+	}
+	return raw
+}
+
+// Принимает: code — код сбоя из потока.
+// Делает: отличает временные сбои провайдера (пустой код события error, server_error и подобные) от окончательных отказов вроде лимита или неподдерживаемой возможности.
+// Возвращает: true, если запрос стоит повторить.
+func isTransientStreamFailure(code string) bool {
+	switch code {
+	case "error", "server_error", "internal_error", "service_unavailable", "overloaded", "subscription_sharing_usage_unavailable":
+		return true
+	}
+	return false
 }
