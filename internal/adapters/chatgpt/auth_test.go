@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -20,6 +21,9 @@ import (
 
 	"github.com/ValievM/family-expense-bot/internal/adapters/chatgpt"
 )
+
+// uuidURN — формат идентификатора хоста, который принимает сервер OpenAI.
+var uuidURN = regexp.MustCompile(`^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 
 var baseTime = time.Date(2026, time.October, 16, 12, 0, 0, 0, time.UTC)
 
@@ -262,7 +266,7 @@ func TestLoginCompletesPKCEFlow(t *testing.T) {
 		query.Get("code_challenge_method") != "S256" || query.Get("resource") != chatgpt.Resource ||
 		query.Get("response_type") != "code" || !strings.Contains(query.Get("scope"), chatgpt.PlanScope) ||
 		!strings.HasPrefix(query.Get("redirect_uri"), "http://127.0.0.1:") || query.Get("ext_agent_host_id") == "" ||
-		query.Get("nonce") == "" {
+		!uuidURN.MatchString(query.Get("ext_agent_host_id")) || query.Get("nonce") == "" {
 		t.Errorf("authorization query = %v", query)
 	}
 	sum := sha256.Sum256([]byte(exchange.Get("code_verifier")))

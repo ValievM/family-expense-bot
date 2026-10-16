@@ -69,11 +69,10 @@ func Login(ctx context.Context, oauth *OAuth, options LoginOptions) (Credentials
 		hostID, clientID, agentName = options.Existing.HostID, options.Existing.ClientID, ""
 	}
 	if hostID == "" {
-		suffix, err := randomString(16)
+		hostID, err = newHostID()
 		if err != nil {
 			return Credentials{}, err
 		}
-		hostID = "urn:fam-expense:" + suffix
 	}
 
 	results := make(chan callbackResult, 1)
@@ -168,6 +167,19 @@ func (oauth *OAuth) authorizationURL(clientID, agentName, hostID, redirectURI, s
 		query.Set("agent_name_hint", agentName)
 	}
 	return oauth.AuthorizeURL + "?" + query.Encode()
+}
+
+// Принимает: ничего.
+// Делает: генерирует случайный UUID версии 4 в виде URN, как требует параметр ext_agent_host_id.
+// Возвращает: строку вида "urn:uuid:xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx" или ошибку источника случайности.
+func newHostID() (string, error) {
+	var id [16]byte
+	if _, err := rand.Read(id[:]); err != nil {
+		return "", fmt.Errorf("read random bytes: %w", err)
+	}
+	id[6] = id[6]&0x0f | 0x40
+	id[8] = id[8]&0x3f | 0x80
+	return fmt.Sprintf("urn:uuid:%x-%x-%x-%x-%x", id[0:4], id[4:6], id[6:8], id[8:10], id[10:]), nil
 }
 
 // Принимает: length — число случайных байт.
