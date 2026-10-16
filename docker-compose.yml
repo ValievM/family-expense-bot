@@ -24,15 +24,9 @@ services:
       TZ: ${TZ:-Europe/Moscow}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       ALLOWED_USER_IDS: ${ALLOWED_USER_IDS:-}
-      LLM_AUTH: ${LLM_AUTH:-apikey}
-      LLM_AUTH_FILE: /data/chatgpt-auth.json
-      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.openai.com/v1}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.z.ai/api/paas/v4}
       LLM_API_KEY: ${LLM_API_KEY:-}
-      LLM_MODEL: ${LLM_MODEL-gpt-4.1-mini}
-    # Режим oauth обновляет токены в ./data, поэтому процесс работает от пользователя хоста.
-    user: "${LOCAL_UID:-10001}:${LOCAL_GID:-10001}"
-    volumes:
-      - ./data:/data
+      LLM_MODEL: ${LLM_MODEL:-glm-5.3-flash}
     depends_on:
       db:
         condition: service_healthy

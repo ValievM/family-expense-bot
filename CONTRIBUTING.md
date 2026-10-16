@@ -1,7 +1,7 @@
 # Правила разработки
 
 Проект: Telegram-бот и веб-панель учёта семейных расходов (Go, PostgreSQL, React, один `docker compose`).
-Требования и архитектура описаны в [docs/TZ.md](docs/TZ.md), контракт API в [docs/openapi.yaml](docs/openapi.yaml).
+Архитектура описана в [README.md](README.md), контракт API в [docs/openapi.yaml](docs/openapi.yaml).
 
 ## Проверки перед коммитом
 

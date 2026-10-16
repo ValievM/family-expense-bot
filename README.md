@@ -48,12 +48,9 @@ docker compose up -d --build --wait && scripts/smoke.sh
 |---|---|---|
 | `TELEGRAM_BOT_TOKEN` | пусто | токен от @BotFather; пусто = бот выключен |
 | `ALLOWED_USER_IDS` | пусто | Telegram ID через запятую, кому можно пользоваться ботом; пусто = всем |
-| `LLM_AUTH` | `apikey` | способ доступа к модели: `apikey` (ключ) или `oauth` (вход через аккаунт ChatGPT, см. ниже) |
-| `LLM_BASE_URL` | `https://api.openai.com/v1` | любой OpenAI-совместимый API с tool calling (режим `apikey`) |
-| `LLM_API_KEY` | пусто | ключ; обязателен для OpenAI, для локальной Ollama не нужен |
-| `LLM_MODEL` | `gpt-4.1-mini` | модель; в режиме `oauth` можно оставить пустой: берётся первая доступная аккаунту |
-| `LLM_AUTH_FILE` | `data/chatgpt-auth.json` | файл с токенами для режима `oauth` |
-| `LOCAL_UID`, `LOCAL_GID` | `10001` | только `oauth` на Linux: `id -u` и `id -g`, чтобы контейнер мог обновлять токены в `./data` |
+| `LLM_BASE_URL` | `https://api.z.ai/api/paas/v4` | любой OpenAI-совместимый API с вызовом функций (tools) |
+| `LLM_API_KEY` | пусто | ключ; обязателен для облачных сервисов, для локальной Ollama не нужен |
+| `LLM_MODEL` | `glm-5.3-flash` | модель |
 | `TZ` | `Europe/Moscow` | часовой пояс для «сегодня», «вчера» и дат трат |
 | `WEB_PORT` | `8080` | порт панели на хосте |
 | `POSTGRES_PASSWORD` | `expenses` | пароль БД внутри compose (наружу порт БД не открыт) |
@@ -62,14 +59,13 @@ docker compose up -d --build --wait && scripts/smoke.sh
 
 ```env
 TELEGRAM_BOT_TOKEN=<токен от @BotFather>
-LLM_AUTH=apikey
 LLM_BASE_URL=https://api.z.ai/api/paas/v4
 LLM_API_KEY=<ключ>
 LLM_MODEL=glm-5.3-flash
 TZ=Europe/Moscow
 ```
 
-Остальные переменные необязательны: `DATABASE_URL`, `HTTP_ADDR` и пароль базы compose задаёт сам. Файл `.env.example` содержит эти же строки с пустыми значениями. Значения по умолчанию в таблице выше действуют, если переменная не задана (по умолчанию модель OpenAI), а `.env.example` для удобства уже настроен на GLM.
+Остальные переменные необязательны: `DATABASE_URL`, `HTTP_ADDR` и пароль базы compose задаёт сам. Файл `.env.example` содержит те же строки с пустыми значениями.
 
 **Другая модель или провайдер без правок кода.** Например, GLM (Z.ai):
 
@@ -123,7 +119,6 @@ Ports and adapters (hexagonal). Все интерфейсы между слоя�
 
 ```
 cmd/server/            точка входа и единственное место сборки зависимостей
-cmd/chatgpt-login/     однократный вход через ChatGPT для LLM_AUTH=oauth
 internal/
   ports/               интерфейсы между слоями, их DTO и общие ошибки
   domain/              агрегат Expense, объекты-значения Money, Day, UserID, Comment, Category, Member (только stdlib)
@@ -135,8 +130,7 @@ internal/
   adapters/
     postgres/          репозитории трат и членов семьи на pgx + миграции goose
     httpapi/           REST на net/http (ServeMux), DTO, соответствие ошибок статусам
-    llm/               клиенты Chat Completions и Responses API, интерфейс Authorizer
-    chatgpt/           вход через ChatGPT (OAuth + PKCE), файл токенов, автообновление
+    llm/               клиент Chat Completions (OpenAI-совместимый), интерфейс Authorizer
     telegram/          long polling, очередь сообщений по пользователям
     systemclock/       часы
   config/              переменные окружения с проверкой при старте
@@ -152,7 +146,6 @@ flowchart LR
     BOT -->|имя из профиля| MEM[service/member]
     AG -->|tools| UE[UserExpenses<br/>только свои траты]
     AG --> LLM[adapters/llm] --> API[(OpenAI API)]
-    LLM --- CG[adapters/chatgpt<br/>вход и токены]
     PANEL[Веб-панель] --> NGINX[nginx] --> HTTP[adapters/httpapi]
     UE --> SVC[service/expense]
     HTTP --> SVC
@@ -207,7 +200,6 @@ CI (GitHub Actions) прогоняет Go-линтеры и тесты, инте
 
 ### Как это тестировалось
 
-- Вход через ChatGPT и Responses API: тесты на поддельном сервере авторизации (PKCE, state, обновление, отказ, гонка обновлений) и поддельном потоке событий.
 - Агент: тесты с фейковой моделью и настоящим сервисом трат (добавление, итоги, правка «последней», удаление, чужие `id`, внедрение `user_id`, лимит шагов, память по пользователям).
 - Telegram-бот: тесты с фейковым Bot API (доступ, личные чаты, порядок сообщений, скрытие внутренних ошибок, утечка токена).
 - REST: `httptest`, соответствие ошибок статусам, `/healthz` при недоступной базе; репозитории (траты и члены семьи): интеграционные тесты на PostgreSQL 16.
@@ -215,26 +207,3 @@ CI (GitHub Actions) прогоняет Go-линтеры и тесты, инте
 - Собранный compose-стек: `scripts/smoke.sh`.
 
 Живой запуск с настоящими токенами Telegram и LLM в автоматические проверки не входит: ему нужны ваши секреты.
-
-## Два способа доступа к LLM
-
-| Режим | Как включить | Протокол |
-|---|---|---|
-| **Ключ API** (по умолчанию) | `LLM_AUTH=apikey`, `LLM_API_KEY=...` | Chat Completions, любой совместимый сервер (GLM/Z.ai, OpenAI, OpenRouter, Ollama); на GLM проверено вживую |
-| **Вход через ChatGPT** | `make chatgpt-login`, затем `LLM_AUTH=oauth` | Responses API, запросы оплачиваются подпиской ChatGPT |
-
-Режим подписки сделан по [документации OpenAI «Sign in with ChatGPT» для открытых проектов](https://developers.openai.com/siwc/token-sharing-open-source/sign-in): OAuth с PKCE через локальный адрес `127.0.0.1:1455`, право `chatgpt.tokens.use.direct`, вызовы `POST /v1/responses` с `store=false` и `stream=true`.
-
-```bash
-make chatgpt-login          # откроет браузер; разрешите использование плана ChatGPT
-# в .env: LLM_AUTH=oauth, LLM_MODEL оставьте пустым; на Linux ещё LOCAL_UID=$(id -u) LOCAL_GID=$(id -g)
-docker compose up --build
-```
-
-Что важно знать:
-
-- Токены лежат в `data/chatgpt-auth.json` (права `0600`, папка в `.gitignore`). Токен доступа живёт час и обновляется сам за две минуты до истечения, а новая пара сохраняется на диск раньше, чем ею начинают пользоваться (токен обновления вращается).
-- Если токен обновления отозван, бот просит повторить `make chatgpt-login`. Исчерпанный лимит подписки не повторяется, пользователь получает нейтральный ответ.
-- Не запускайте один и тот же вход одновременно в двух процессах: обновление токена должно идти по очереди.
-- Документация OpenAI описывает этот поток для открытых проектов, а условия могут меняться. Проверьте актуальные правила на странице OpenAI, прежде чем использовать режим в продакшене.
-- Код входа находится в `internal/adapters/chatgpt`, Responses-клиент в `internal/adapters/llm/responses.go`; оба подключаются к агенту через тот же порт `ports.LLM`, поэтому агент и тесты не знают о способе авторизации.

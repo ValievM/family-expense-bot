@@ -12,12 +12,8 @@ import (
 const (
 	defaultTimeZone   = "Europe/Moscow"
 	defaultHTTPAddr   = ":8080"
-	defaultLLMBaseURL = "https://api.openai.com/v1"
-	defaultLLMModel   = "gpt-4.1-mini"
-	defaultAuthFile   = "data/chatgpt-auth.json"
-
-	AuthAPIKey = "apikey"
-	AuthOAuth  = "oauth"
+	defaultLLMBaseURL = "https://api.z.ai/api/paas/v4"
+	defaultLLMModel   = "glm-5.3-flash"
 )
 
 type Config struct {
@@ -28,8 +24,6 @@ type Config struct {
 	LLMBaseURL      string
 	LLMAPIKey       string
 	LLMModel        string
-	LLMAuth         string
-	LLMAuthFile     string
 	Location        *time.Location
 	TelegramEnabled bool
 }
@@ -73,16 +67,9 @@ func readSettings(getenv func(string) string) Config {
 		TelegramToken: readOr(getenv, "TELEGRAM_BOT_TOKEN", ""),
 		LLMBaseURL:    readOr(getenv, "LLM_BASE_URL", defaultLLMBaseURL),
 		LLMAPIKey:     readOr(getenv, "LLM_API_KEY", ""),
-		LLMAuth:       strings.ToLower(readOr(getenv, "LLM_AUTH", AuthAPIKey)),
-		LLMAuthFile:   readOr(getenv, "LLM_AUTH_FILE", defaultAuthFile),
 	}
 	cfg.TelegramEnabled = cfg.TelegramToken != ""
-	// В режиме подписки модель по умолчанию выбирается из списка, доступного аккаунту.
-	modelFallback := ""
-	if cfg.LLMAuth == AuthAPIKey {
-		modelFallback = defaultLLMModel
-	}
-	cfg.LLMModel = readOr(getenv, "LLM_MODEL", modelFallback)
+	cfg.LLMModel = readOr(getenv, "LLM_MODEL", defaultLLMModel)
 	return cfg
 }
 
@@ -94,12 +81,9 @@ func (cfg Config) validate() []error {
 	if cfg.DatabaseURL == "" {
 		problems = append(problems, errors.New("DATABASE_URL is required"))
 	}
-	if cfg.LLMAuth != AuthAPIKey && cfg.LLMAuth != AuthOAuth {
-		problems = append(problems, fmt.Errorf("LLM_AUTH must be %q or %q, got %q", AuthAPIKey, AuthOAuth, cfg.LLMAuth))
-	}
 	// Без ключа можно работать только с совместимыми серверами без авторизации, например с локальной Ollama.
-	if cfg.TelegramEnabled && cfg.LLMAuth == AuthAPIKey && cfg.LLMAPIKey == "" && cfg.LLMBaseURL == defaultLLMBaseURL {
-		problems = append(problems, errors.New("LLM_API_KEY is required when the Telegram bot uses the OpenAI API"))
+	if cfg.TelegramEnabled && cfg.LLMAPIKey == "" && cfg.LLMBaseURL == defaultLLMBaseURL {
+		problems = append(problems, errors.New("LLM_API_KEY is required when the bot uses the default LLM endpoint"))
 	}
 	return problems
 }

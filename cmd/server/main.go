@@ -19,7 +19,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 
-	"github.com/ValievM/family-expense-bot/internal/adapters/chatgpt"
 	"github.com/ValievM/family-expense-bot/internal/adapters/httpapi"
 	"github.com/ValievM/family-expense-bot/internal/adapters/llm"
 	"github.com/ValievM/family-expense-bot/internal/adapters/postgres"
@@ -87,10 +86,7 @@ func run() error {
 	})
 
 	if cfg.TelegramEnabled {
-		bot, err := newBot(cfg, service, members, clock, logger)
-		if err != nil {
-			return err
-		}
+		bot := newBot(cfg, service, members, clock, logger)
 		goWorker(&workers, failures, func() error {
 			logger.Info("telegram bot started", "llm_model", cfg.LLMModel)
 			return bot.Run(ctx)
@@ -193,30 +189,11 @@ func waitForDatabase(ctx context.Context, pool *pgxpool.Pool) error {
 
 // Принимает: cfg; service — сервис трат; members — справочник семьи; clock; logger.
 // Делает: собирает LLM-клиент, агент и бота; агенту выдаётся только фабрика трат, привязанных к автору сообщения.
-// Возвращает: бота или ошибку, если выбран вход через ChatGPT, а входа ещё не было.
+// Возвращает: готового бота.
 func newBot(cfg config.Config, service *expense.Service, members ports.MemberDirectory,
-	clock ports.Clock, logger *slog.Logger) (*telegram.Bot, error) {
-	model, err := newLLM(cfg)
-	if err != nil {
-		return nil, err
-	}
+	clock ports.Clock, logger *slog.Logger) *telegram.Bot {
+	model := llm.NewClient(cfg.LLMBaseURL, cfg.LLMModel, llm.NewAPIKeyAuthorizer(cfg.LLMAPIKey))
 	scope := func(owner domain.UserID) ports.UserExpenses { return service.ForUser(owner) }
 	assistant := agent.New(model, scope, tools.Default(), clock, agent.WithLocation(cfg.Location), agent.WithLogger(logger))
-	return telegram.NewBot(telegram.NewClient(cfg.TelegramToken), assistant, cfg, telegram.WithLogger(logger), telegram.WithMemberDirectory(members)), nil
-}
-
-// Принимает: cfg — конфигурация с режимом LLM_AUTH.
-// Делает: выбирает ключ API (Chat Completions) или вход через ChatGPT (Responses API); во втором проверяет наличие входа.
-// Возвращает: ports.LLM или ошибку, например chatgpt.ErrNotLoggedIn.
-func newLLM(cfg config.Config) (ports.LLM, error) {
-	if cfg.LLMAuth != config.AuthOAuth {
-		return llm.NewClient(cfg.LLMBaseURL, cfg.LLMModel, llm.NewAPIKeyAuthorizer(cfg.LLMAPIKey)), nil
-	}
-
-	store := chatgpt.NewFileStore(cfg.LLMAuthFile)
-	if _, err := store.Load(); err != nil {
-		return nil, err
-	}
-	source := chatgpt.NewTokenSource(store, chatgpt.NewOAuth())
-	return llm.NewResponsesClient(cfg.LLMBaseURL, cfg.LLMModel, source), nil
+	return telegram.NewBot(telegram.NewClient(cfg.TelegramToken), assistant, cfg, telegram.WithLogger(logger), telegram.WithMemberDirectory(members))
 }

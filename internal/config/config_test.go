@@ -18,7 +18,7 @@ func TestLoadAppliesDefaults(t *testing.T) {
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	if cfg.HTTPAddr != ":8080" || cfg.LLMModel != "gpt-4.1-mini" || cfg.Location.String() != "Europe/Moscow" || cfg.TelegramEnabled {
+	if cfg.HTTPAddr != ":8080" || cfg.LLMModel != "glm-5.3-flash" || cfg.Location.String() != "Europe/Moscow" || cfg.TelegramEnabled {
 		t.Errorf("cfg = %+v", cfg)
 	}
 }
@@ -34,8 +34,7 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 		{"bad time zone", map[string]string{"DATABASE_URL": "x", "TZ": "Mars/Base"}, []string{"TZ"}},
 		{"bad allowed id", map[string]string{"DATABASE_URL": "x", "ALLOWED_USER_IDS": "1,abc"}, []string{"ALLOWED_USER_IDS"}},
 		{"negative allowed id", map[string]string{"DATABASE_URL": "x", "ALLOWED_USER_IDS": "-5"}, []string{"ALLOWED_USER_IDS"}},
-		{"bot without openai key", map[string]string{"DATABASE_URL": "x", "TELEGRAM_BOT_TOKEN": "t"}, []string{"LLM_API_KEY"}},
-		{"unknown auth mode", map[string]string{"DATABASE_URL": "x", "LLM_AUTH": "magic"}, []string{"LLM_AUTH"}},
+		{"bot without key", map[string]string{"DATABASE_URL": "x", "TELEGRAM_BOT_TOKEN": "t"}, []string{"LLM_API_KEY"}},
 		{"several problems", map[string]string{"TZ": "Mars/Base"}, []string{"DATABASE_URL", "TZ"}},
 	}
 
@@ -81,17 +80,5 @@ func TestEmptyAllowListAllowsEveryone(t *testing.T) {
 
 	if !cfg.IsUserAllowed(123456) {
 		t.Error("IsUserAllowed() = false, want true when ALLOWED_USER_IDS is empty")
-	}
-}
-
-// Проверяет: режим oauth не требует ключа, модель пуста, файл входа по умолчанию.
-func TestLoadOAuthModeNeedsNoKeyAndNoDefaultModel(t *testing.T) {
-	cfg, err := config.Load(env(map[string]string{"DATABASE_URL": "x", "TELEGRAM_BOT_TOKEN": "t", "LLM_AUTH": "OAuth"}))
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-
-	if cfg.LLMAuth != config.AuthOAuth || cfg.LLMModel != "" || cfg.LLMAuthFile != "data/chatgpt-auth.json" {
-		t.Errorf("cfg = %+v", cfg)
 	}
 }
