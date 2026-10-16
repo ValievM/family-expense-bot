@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError } from '../api/client';
 
-/** Состояние асинхронной загрузки данных. */
 export interface FetchState<T> {
   data: T | null;
   loading: boolean;
@@ -10,9 +9,9 @@ export interface FetchState<T> {
 }
 
 /**
- * Принимает: функцию загрузки и список зависимостей, при смене которых нужно перезагрузить.
- * Делает: запускает загрузку, игнорирует устаревшие ответы и хранит data/loading/error.
- * Возвращает: FetchState с функцией reload для ручного обновления.
+ * Принимает: функция загрузки и зависимости для перезагрузки.
+ * Делает: игнорирует устаревшие ответы, хранит data/loading/error.
+ * Возвращает: FetchState с reload.
  */
 export function useFetch<T>(load: () => Promise<T>, deps: unknown[]): FetchState<T> {
   const [data, setData] = useState<T | null>(null);

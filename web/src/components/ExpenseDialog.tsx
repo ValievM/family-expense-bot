@@ -7,7 +7,6 @@ import { Modal } from './Modal';
 
 const NEW_MEMBER = '__new__';
 
-/** Свойства диалога создания и правки расхода. */
 interface ExpenseDialogProps {
   expense: Expense | null;
   members: Member[];
@@ -18,9 +17,9 @@ interface ExpenseDialogProps {
 }
 
 /**
- * Принимает: расход (null для создания), справочники и обработчики сохранения и закрытия.
- * Делает: показывает форму, валидирует её как API, при правке отправляет только изменённые поля и выводит ошибки API.
- * Возвращает: React-элемент модальной формы.
+ * Принимает: расход (null для создания), справочники, обработчики.
+ * Делает: валидирует форму как API; при правке шлёт только изменённые поля.
+ * Возвращает: модальную форму.
  */
 export function ExpenseDialog({ expense, members, categories, onCreate, onUpdate, onClose }: ExpenseDialogProps) {
   const editing = expense !== null;
@@ -30,21 +29,11 @@ export function ExpenseDialog({ expense, members, categories, onCreate, onUpdate
   const [apiError, setApiError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  /**
-   * Принимает: имя поля и новое значение.
-   * Делает: обновляет одно поле формы и сбрасывает его ошибку.
-   * Возвращает: ничего.
-   */
   const set = (key: keyof ExpenseFormState, value: string) => {
     setForm((f) => ({ ...f, [key]: value }));
     setErrors((e) => ({ ...e, [key]: undefined }));
   };
 
-  /**
-   * Принимает: событие отправки формы.
-   * Делает: валидирует, отправляет POST или PATCH, при успехе закрывает окно, при ошибке показывает сообщение.
-   * Возвращает: Promise без значения.
-   */
   const submit = async (ev: FormEvent) => {
     ev.preventDefault();
     const res = validateForm(form, categories.map((c) => c.key));

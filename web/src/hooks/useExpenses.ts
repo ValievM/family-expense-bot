@@ -4,8 +4,8 @@ import type { Filters } from '../lib/filters';
 import { useFetch, type FetchState } from './useFetch';
 
 /**
- * Принимает: текущие фильтры.
- * Делает: загружает расходы и перезагружает их при смене фильтров.
+ * Принимает: фильтры.
+ * Делает: загружает расходы, перезагружает при смене фильтров.
  * Возвращает: FetchState со списком расходов.
  */
 export function useExpenses(filters: Filters): FetchState<Expense[]> {

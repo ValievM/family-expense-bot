@@ -1,4 +1,3 @@
-/** Ключ категории расхода из закрытого списка API. */
 export type CategoryKey =
   | 'food'
   | 'transport'
@@ -8,7 +7,7 @@ export type CategoryKey =
   | 'shopping'
   | 'other';
 
-/** Расход как его отдаёт API; amount в копейках. */
+/** amount в копейках. */
 export interface Expense {
   id: number;
   user_id: number;
@@ -21,18 +20,15 @@ export interface Expense {
   updated_at: string;
 }
 
-/** Категория со своей русской подписью. */
 export interface Category {
   key: CategoryKey;
   label: string;
 }
 
-/** Участник семьи, у которого есть хотя бы один расход. */
 export interface Member {
   user_id: number;
 }
 
-/** Тело POST /api/expenses; amount в копейках. */
 export interface CreateExpense {
   user_id: number;
   amount: number;
@@ -41,7 +37,6 @@ export interface CreateExpense {
   comment?: string;
 }
 
-/** Тело PATCH /api/expenses/{id}: только изменённые поля. */
 export interface UpdateExpense {
   amount?: number;
   category?: CategoryKey;
@@ -49,7 +44,7 @@ export interface UpdateExpense {
   comment?: string;
 }
 
-/** Параметры запроса списка расходов; пустая строка означает "без фильтра". */
+/** Пустая строка означает "без фильтра". */
 export interface ListParams {
   user_id: string;
   category: string;

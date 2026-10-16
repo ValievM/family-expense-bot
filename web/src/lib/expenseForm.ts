@@ -2,7 +2,6 @@ import type { CategoryKey, Expense } from '../api/types';
 import { kopecksToInput, parseRubles } from './money';
 import type { ExpenseValues } from './patch';
 
-/** Сырые строковые значения полей формы расхода. */
 export interface ExpenseFormState {
   userId: string;
   amount: string;
@@ -11,25 +10,14 @@ export interface ExpenseFormState {
   comment: string;
 }
 
-/** Ошибки полей формы по имени поля. */
 export type FormErrors = Partial<Record<keyof ExpenseFormState, string>>;
 
-/**
- * Принимает: ничего.
- * Делает: берёт локальную дату пользователя.
- * Возвращает: сегодняшний день в формате YYYY-MM-DD.
- */
-export function todayISO(): string {
+function todayISO(): string {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-/**
- * Принимает: расход для редактирования или null для создания.
- * Делает: готовит начальные значения полей формы.
- * Возвращает: ExpenseFormState (для нового расхода дата равна сегодняшней).
- */
 export function initialForm(expense: Expense | null): ExpenseFormState {
   if (!expense) {
     return { userId: '', amount: '', category: '', spentAt: todayISO(), comment: '' };
@@ -44,9 +32,9 @@ export function initialForm(expense: Expense | null): ExpenseFormState {
 }
 
 /**
- * Принимает: значения формы и список допустимых ключей категорий.
- * Делает: повторяет проверки API (user_id > 0, сумма > 0, категория из списка, дата).
- * Возвращает: либо {values} с разобранными значениями, либо {errors} с текстами ошибок.
+ * Принимает: значения формы и допустимые ключи категорий.
+ * Делает: повторяет проверки API (user_id > 0, сумма > 0, категория, дата).
+ * Возвращает: {values} или {errors}.
  */
 export function validateForm(
   form: ExpenseFormState,

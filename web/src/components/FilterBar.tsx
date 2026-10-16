@@ -1,7 +1,6 @@
 import type { Category, Member } from '../api/types';
 import { hasActiveFilters, type Filters } from '../lib/filters';
 
-/** Свойства панели фильтров. */
 interface FilterBarProps {
   filters: Filters;
   members: Member[];
@@ -10,11 +9,6 @@ interface FilterBarProps {
   onReset: () => void;
 }
 
-/**
- * Принимает: фильтры, справочники участников и категорий, обработчики изменения и сброса.
- * Делает: рисует селекты участника и категории, поля периода и кнопку "Сбросить".
- * Возвращает: React-элемент формы фильтров.
- */
 export function FilterBar({ filters, members, categories, onChange, onReset }: FilterBarProps) {
   return (
     <form className="filters" aria-label="Фильтры" onSubmit={(e) => e.preventDefault()}>

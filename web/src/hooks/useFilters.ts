@@ -3,8 +3,8 @@ import { EMPTY_FILTERS, filtersFromQuery, filtersToQuery, type Filters } from '.
 
 /**
  * Принимает: ничего.
- * Делает: хранит фильтры, читает их из query-строки и записывает обратно через history.replaceState; следит за popstate.
- * Возвращает: кортеж [фильтры, изменить одно поле, сбросить все].
+ * Делает: хранит фильтры в query-строке (history.replaceState), слушает popstate.
+ * Возвращает: [фильтры, изменить поле, сбросить все].
  */
 export function useFilters(): [Filters, (patch: Partial<Filters>) => void, () => void] {
   const [filters, setFilters] = useState<Filters>(() => filtersFromQuery(window.location.search));

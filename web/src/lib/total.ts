@@ -2,7 +2,7 @@ import type { Expense } from '../api/types';
 
 /**
  * Принимает: список расходов.
- * Делает: суммирует поле amount в копейках.
+ * Делает: суммирует amount.
  * Возвращает: итог в копейках.
  */
 export function totalKopecks(items: Expense[]): number {

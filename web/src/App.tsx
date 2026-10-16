@@ -11,14 +11,8 @@ import { useExpenses } from './hooks/useExpenses';
 import { useFilters } from './hooks/useFilters';
 import { useMembers } from './hooks/useMembers';
 
-/** Какой диалог сейчас открыт. */
 type DialogState = { kind: 'none' } | { kind: 'form'; expense: Expense | null } | { kind: 'delete'; expense: Expense };
 
-/**
- * Принимает: ничего.
- * Делает: собирает страницу: фильтры, таблицу, состояния загрузки и ошибок, диалоги; после изменений перезагружает данные.
- * Возвращает: корневой React-элемент приложения.
- */
 export function App() {
   const [filters, patchFilters, resetFilters] = useFilters();
   const expenses = useExpenses(filters);
@@ -28,42 +22,22 @@ export function App() {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  /**
-   * Принимает: ничего.
-   * Делает: закрывает диалог и обновляет расходы и список участников.
-   * Возвращает: ничего.
-   */
   const afterMutation = () => {
     setDialog({ kind: 'none' });
     expenses.reload();
     members.reload();
   };
 
-  /**
-   * Принимает: данные нового расхода.
-   * Делает: отправляет создание и обновляет данные; ошибка уходит в диалог.
-   * Возвращает: Promise без значения.
-   */
   const handleCreate = async (input: CreateExpense) => {
     await createExpense(input);
     afterMutation();
   };
 
-  /**
-   * Принимает: id расхода и патч.
-   * Делает: отправляет изменение и обновляет данные; ошибка уходит в диалог.
-   * Возвращает: Promise без значения.
-   */
   const handleUpdate = async (id: number, patch: UpdateExpense) => {
     await updateExpense(id, patch);
     afterMutation();
   };
 
-  /**
-   * Принимает: расход, который нужно удалить.
-   * Делает: отправляет удаление, блокирует кнопки на время запроса, при ошибке показывает её в диалоге.
-   * Возвращает: Promise без значения.
-   */
   const handleDelete = async (e: Expense) => {
     setDeleting(true);
     setDeleteError(null);

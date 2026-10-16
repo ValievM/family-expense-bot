@@ -1,6 +1,5 @@
 import type { CategoryKey, Expense, UpdateExpense } from '../api/types';
 
-/** Разобранные значения формы расхода (сумма в копейках). */
 export interface ExpenseValues {
   userId: number;
   amount: number;
@@ -11,8 +10,8 @@ export interface ExpenseValues {
 
 /**
  * Принимает: исходный расход и новые значения формы.
- * Делает: сравнивает поля и кладёт в патч только изменившиеся.
- * Возвращает: объект UpdateExpense (пустой, если ничего не менялось).
+ * Делает: кладёт в патч только изменившиеся поля.
+ * Возвращает: UpdateExpense (пустой, если ничего не менялось).
  */
 export function buildPatch(original: Expense, next: ExpenseValues): UpdateExpense {
   const patch: UpdateExpense = {};

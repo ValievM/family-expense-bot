@@ -3,7 +3,6 @@ import { formatDate } from '../lib/date';
 import { formatRubles } from '../lib/money';
 import { totalKopecks } from '../lib/total';
 
-/** Свойства таблицы расходов. */
 interface ExpenseTableProps {
   items: Expense[];
   busy: boolean;
@@ -11,11 +10,6 @@ interface ExpenseTableProps {
   onDelete: (e: Expense) => void;
 }
 
-/**
- * Принимает: список расходов, флаг занятости и обработчики правки и удаления.
- * Делает: рисует таблицу (на узких экранах карточки) и строку итога по показанным строкам.
- * Возвращает: React-элемент таблицы.
- */
 export function ExpenseTable({ items, busy, onEdit, onDelete }: ExpenseTableProps) {
   return (
     <div className="table-wrap">
