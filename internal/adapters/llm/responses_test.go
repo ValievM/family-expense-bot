@@ -22,7 +22,7 @@ func writeEvents(w http.ResponseWriter, events ...string) {
 }
 
 func newResponsesTestClient(url, model string) *llm.ResponsesClient {
-	return llm.NewResponsesClient(url+"/v1/", model, llm.NewAPIKeyAuthorizer("token"), llm.WithBackoff(noBackoff))
+	return llm.NewResponsesClient(url+testAPIPrefix+"/", model, llm.NewAPIKeyAuthorizer(testAPIKey), llm.WithBackoff(noBackoff))
 }
 
 // Проверяет: store=false, stream=true, инструменты; разговор переведён в message, function_call и function_call_output.
@@ -49,7 +49,7 @@ func TestResponsesRequestShape(t *testing.T) {
 		t.Fatalf("Complete() error = %v", err)
 	}
 
-	if auth != "Bearer token" || body["model"] != "slug-1" || body["store"] != false || body["stream"] != true {
+	if auth != "Bearer "+testAPIKey || body["model"] != "slug-1" || body["store"] != false || body["stream"] != true {
 		t.Errorf("auth = %q, body = %v", auth, body)
 	}
 	input := body["input"].([]any)
@@ -99,7 +99,7 @@ func TestResponsesPicksFirstListedModelOnce(t *testing.T) {
 	var modelCalls atomic.Int32
 	var used atomic.Value
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v1/models" {
+		if r.URL.Path == testAPIPrefix+"/models" {
 			modelCalls.Add(1)
 			_, _ = w.Write([]byte(`{"models":[{"slug":"hidden-1","visibility":"hide"},{"slug":"gpt-listed","visibility":"list"},{"slug":"gpt-second","visibility":"list"}]}`))
 			return

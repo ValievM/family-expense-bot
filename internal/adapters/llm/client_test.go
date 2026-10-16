@@ -15,10 +15,16 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/ports"
 )
 
+const (
+	testAPIPrefix = "/v1"
+	testModel     = "test-model"
+	testAPIKey    = "secret"
+)
+
 func noBackoff(int) time.Duration { return 0 }
 
 func newTestClient(url string) *llm.Client {
-	return llm.NewClient(url+"/v1/", "test-model", llm.NewAPIKeyAuthorizer("secret"), llm.WithBackoff(noBackoff))
+	return llm.NewClient(url+testAPIPrefix+"/", testModel, llm.NewAPIKeyAuthorizer(testAPIKey), llm.WithBackoff(noBackoff))
 }
 
 // Проверяет: Complete шлёт модель, bearer-ключ и инструменты с tool_choice=auto и разбирает tool_calls ответа.
@@ -40,10 +46,10 @@ func TestCompleteSendsToolsAndParsesToolCalls(t *testing.T) {
 		t.Fatalf("Complete() error = %v", err)
 	}
 
-	if path != "/v1/chat/completions" || auth != "Bearer secret" {
+	if path != testAPIPrefix+"/chat/completions" || auth != "Bearer "+testAPIKey {
 		t.Errorf("path = %q, auth = %q", path, auth)
 	}
-	if got["model"] != "test-model" || got["tool_choice"] != "auto" {
+	if got["model"] != testModel || got["tool_choice"] != "auto" {
 		t.Errorf("request = %v", got)
 	}
 	tools := got["tools"].([]any)
