@@ -12,6 +12,7 @@ import (
 
 	"github.com/ValievM/family-expense-bot/internal/domain"
 	"github.com/ValievM/family-expense-bot/internal/service/agent"
+	"github.com/ValievM/family-expense-bot/internal/service/agent/tools"
 	"github.com/ValievM/family-expense-bot/internal/service/expense"
 )
 
@@ -181,7 +182,7 @@ func newHarness(t *testing.T, replies ...agent.Message) *harness {
 	llm := &scriptedLLM{replies: replies}
 	scope := func(userID int64) agent.UserExpenses { return service.ForUser(userID) }
 	return &harness{
-		agent:      agent.New(llm, scope, agent.WithClock(fixedClock{now: now}), agent.WithLocation(moscow)),
+		agent:      agent.New(llm, scope, tools.Default(moscow), agent.WithClock(fixedClock{now: now}), agent.WithLocation(moscow)),
 		llm:        llm,
 		repository: repository,
 		today:      time.Date(2026, time.October, 16, 0, 0, 0, 0, moscow),

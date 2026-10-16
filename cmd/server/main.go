@@ -26,6 +26,7 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/adapters/telegram"
 	"github.com/ValievM/family-expense-bot/internal/config"
 	"github.com/ValievM/family-expense-bot/internal/service/agent"
+	"github.com/ValievM/family-expense-bot/internal/service/agent/tools"
 	"github.com/ValievM/family-expense-bot/internal/service/expense"
 )
 
@@ -170,7 +171,7 @@ func newBot(cfg config.Config, service *expense.Service, logger *slog.Logger) (*
 		return nil, err
 	}
 	scope := func(userID int64) agent.UserExpenses { return service.ForUser(userID) }
-	assistant := agent.New(model, scope, agent.WithLocation(cfg.Location), agent.WithLogger(logger))
+	assistant := agent.New(model, scope, tools.Default(cfg.Location), agent.WithLocation(cfg.Location), agent.WithLogger(logger))
 	return telegram.NewBot(telegram.NewClient(cfg.TelegramToken), assistant, cfg, telegram.WithLogger(logger)), nil
 }
 

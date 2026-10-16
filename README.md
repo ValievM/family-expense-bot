@@ -89,7 +89,8 @@ internal/
   domain/              Expense, Category, дата, ошибки, валидация (только stdlib)
   service/
     expense/           сценарии (use cases), порт Repository, привязка к владельцу
-    agent/             ИИ-агент: инструменты, цикл, промпт, порт LLM
+    agent/             ядро ИИ-агента: цикл, промпт, память, порт LLM, контракт Tool
+      tools/           инструменты агента (add/list/update/delete), подключаются в main
   adapters/
     postgres/          Repository на pgx + миграции goose
     httpapi/           REST на net/http (ServeMux), DTO, соответствие ошибок статусам
@@ -118,8 +119,8 @@ flowchart LR
 | Что | Где | Зачем |
 |---|---|---|
 | **Изоляция пользователей по конструкции** | `service/expense/user_expenses.go`, `service/agent/user_expenses.go` | `service.ForUser(id)` возвращает тип без параметра владельца; агент получает только интерфейс `UserExpenses`, неограниченных методов у него нет. `user_id` берётся из Telegram и никогда не приходит от модели |
-| **Защита от prompt injection** | `service/agent/tools.go` | аргументы инструментов разбираются строго (`DisallowUnknownFields`): лишнее поле `user_id` отклоняется, в схемах инструментов его нет; есть тесты |
-| **Command / Strategy + реестр** | `service/agent/tools.go`, `tool_*.go` | новый инструмент = новый тип `Tool`, цикл агента не меняется (OCP) |
+| **Защита от prompt injection** | `service/agent/tools/args.go` | аргументы инструментов разбираются строго (`DisallowUnknownFields`): лишнее поле `user_id` отклоняется, в схемах инструментов его нет; есть тесты |
+| **Command / Strategy + реестр** | `service/agent/tool.go` (контракт и `ToolSet`), `service/agent/tools/` (реализации) | новый инструмент = новый тип `Tool`, цикл агента не меняется (OCP) |
 | **Repository** | `service/expense/repository.go`, `adapters/postgres` | сервис знает только интерфейс (DIP); интерфейс объявляет потребитель |
 | **Adapter** | `adapters/llm`, `adapters/telegram` | внешние API спрятаны за маленькими интерфейсами (ISP) |
 | **Functional options** | `agent.New`, `llm.NewClient`, `telegram.NewBot` | настройка без раздутых конструкторов |

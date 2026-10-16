@@ -41,7 +41,8 @@ internal/
   domain/                     — Expense, Category, ошибки, валидация. Ничего не импортирует.
   service/
     expense/                  — use cases + порт Repository. Знает только domain.
-    agent/                    — LLM-агент: tools, цикл, промпт. Зависит от service/expense и порта LLM.
+    agent/                    — LLM-агент: цикл, промпт, память, порт LLM. Зависит от service/expense.
+      tools/                  — инструменты агента (подключаются снаружи, в main).
   adapters/
     postgres/                 — реализация Repository
     llm/                      — OpenAI-совместимый клиент

@@ -1,8 +1,9 @@
-package agent
+package tools
 
 import (
 	"context"
 	"encoding/json"
+	"github.com/ValievM/family-expense-bot/internal/service/agent"
 	"time"
 
 	"github.com/ValievM/family-expense-bot/internal/domain"
@@ -26,8 +27,8 @@ type updateExpenseArguments struct {
 // Принимает: ничего.
 // Делает: описывает инструмент update_expense: id и любые изменяемые поля.
 // Возвращает: ToolSpec с обязательным id.
-func (tool updateExpenseTool) Spec() ToolSpec {
-	return ToolSpec{
+func (tool updateExpenseTool) Spec() agent.ToolSpec {
+	return agent.ToolSpec{
 		Name:        "update_expense",
 		Description: "Изменить трату пользователя по id. Передавай только изменяемые поля. id берётся из list_expenses.",
 		Parameters: objectSchema(map[string]any{
@@ -43,13 +44,13 @@ func (tool updateExpenseTool) Spec() ToolSpec {
 // Принимает: ctx — контекст запроса; expenses — траты владельца сообщения; arguments — JSON от модели.
 // Делает: собирает частичное изменение и применяет его, только если трата принадлежит владельцу.
 // Возвращает: обновлённую трату в виде expenseView либо ошибку аргументов, валидации или «не найдено».
-func (tool updateExpenseTool) Execute(ctx context.Context, expenses UserExpenses, arguments json.RawMessage) (any, error) {
+func (tool updateExpenseTool) Execute(ctx context.Context, expenses agent.UserExpenses, arguments json.RawMessage) (any, error) {
 	var args updateExpenseArguments
 	if err := decodeArguments(arguments, &args); err != nil {
 		return nil, err
 	}
 	if args.ID <= 0 {
-		return nil, ArgumentError{Message: "id must be a positive integer"}
+		return nil, agent.ArgumentError{Message: "id must be a positive integer"}
 	}
 	patch, err := tool.buildPatch(args)
 	if err != nil {
@@ -87,7 +88,7 @@ func (tool updateExpenseTool) buildPatch(args updateExpenseArguments) (expense.P
 	patch.Comment = args.Comment
 
 	if patch.Amount == nil && patch.Category == nil && patch.SpentAt == nil && patch.Comment == nil {
-		return patch, ArgumentError{Message: "nothing to update: pass at least one of amount, category, date, comment"}
+		return patch, agent.ArgumentError{Message: "nothing to update: pass at least one of amount, category, date, comment"}
 	}
 	return patch, nil
 }

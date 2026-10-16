@@ -61,13 +61,10 @@ func WithClock(clock Clock) Option {
 }
 
 // Принимает: location — часовой пояс календаря пользователей.
-// Делает: задаёт часовой пояс для дат в промпте и инструментах и пересобирает стандартные инструменты под него.
+// Делает: задаёт часовой пояс, в котором считаются «сегодня» и «вчера» в промпте.
 // Возвращает: Option.
 func WithLocation(location *time.Location) Option {
-	return func(agent *Agent) {
-		agent.location = location
-		agent.tools = DefaultTools(location)
-	}
+	return func(agent *Agent) { agent.location = location }
 }
 
 // Принимает: history — хранилище памяти диалога.
@@ -95,20 +92,20 @@ func WithLogger(logger *slog.Logger) Option {
 	return func(agent *Agent) { agent.logger = logger }
 }
 
-// Принимает: llm — провайдер модели; scope — фабрика трат по владельцу; options — необязательные настройки.
-// Делает: собирает агента со стандартными инструментами, UTC, памятью на 8 сообщений и лимитом в 5 шагов.
+// Принимает: llm — провайдер модели; scope — фабрика трат по владельцу; tools — набор инструментов (внедряется снаружи, чтобы ядро не зависело от них); options — необязательные настройки.
+// Делает: собирает агента с UTC, памятью на 8 сообщений и лимитом в 5 шагов.
 // Возвращает: готового агента.
-func New(llm LLM, scope ScopeFactory, options ...Option) *Agent {
+func New(llm LLM, scope ScopeFactory, tools *ToolSet, options ...Option) *Agent {
 	agent := &Agent{
 		llm:      llm,
 		scope:    scope,
+		tools:    tools,
 		clock:    systemClock{},
 		location: time.UTC,
 		history:  NewMemoryHistory(0),
 		maxSteps: defaultMaxSteps,
 		logger:   slog.Default(),
 	}
-	agent.tools = DefaultTools(agent.location)
 	for _, option := range options {
 		option(agent)
 	}
