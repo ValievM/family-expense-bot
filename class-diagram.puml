@@ -21,33 +21,78 @@ left to right direction
 hide circle
 hide empty members
 
-package "domain (предметная область)" {
-  class Expense {
-    +ID : int64
-    +UserID : int64
-    +Amount : int64 <<копейки>>
-    +Category : Category
-    +SpentAt : time.Time
-    +Comment : string
-    +CreatedAt : time.Time
-    +UpdatedAt : time.Time
-    +Validate() : error
+package "domain (предметная область, DDD)" {
+  class Expense <<entity, aggregate root>> {
+    -id : ExpenseID
+    -owner : UserID
+    -amount : Money
+    -category : Category
+    -spentOn : Day
+    -comment : Comment
+    -createdAt : time.Time
+    -updatedAt : time.Time
+    +NewExpense(NewExpenseInput) : Expense, error
+    +Restore(Snapshot) : Expense, error
+    +Apply(Changes, now) : Expense, error
+    +WithID(ExpenseID) : Expense
+    +OwnedBy(UserID) : bool
+    +ID() : ExpenseID
+    +Owner() : UserID
+    +Amount() : Money
+    +Category() : Category
+    +SpentOn() : Day
+    +Comment() : Comment
+    -validate() : error
   }
-  class Category <<string>> {
+  class Money <<value object>> {
+    -kopecks : int64
+    +NewMoney(kopecks) : Money, error
+    +MoneyFromRubles(float64) : Money, error
+    +Kopecks() : int64
+    +IsPositive() : bool
+    +Add(Money) : Money
+    +String() : string
+  }
+  class Day <<value object>> {
+    -date : time.Time
+    +NewDay(y, m, d) : Day, error
+    +ParseDay(string) : Day, error
+    +DayOf(time.Time, *Location) : Day
+    +Compare(Day) : int
+    +String() : string
+  }
+  class UserID <<value object>> {
+    -value : int64
+    +NewUserID(int64) : UserID, error
+    +Int64() : int64
+  }
+  class Comment <<value object>> {
+    -text : string
+    +NewComment(string) : Comment, error
+    +String() : string
+  }
+  class Category <<value object>> {
+    +ParseCategory(string) : Category, error
     +Label() : string
     +IsValid() : bool
     +Categories() : []Category
+  }
+  class Changes <<value object>> {
+    +Amount : *Money
+    +Category : *Category
+    +SpentOn : *Day
+    +Comment : *Comment
   }
 }
 
 package "service/expense (сценарии трат)" {
   interface Repository <<interface>> {
     +Create(ctx, Expense) : Expense, error
-    +Get(ctx, id) : Expense, error
+    +Get(ctx, ExpenseID) : Expense, error
     +List(ctx, ListFilter) : []Expense, error
-    +ListUserIDs(ctx) : []int64, error
+    +ListUserIDs(ctx) : []UserID, error
     +Update(ctx, Expense) : Expense, error
-    +Delete(ctx, id) : error
+    +Delete(ctx, ExpenseID) : error
   }
   interface Clock <<interface>> {
     +Now() : time.Time
@@ -57,34 +102,35 @@ package "service/expense (сценарии трат)" {
     -clock : Clock
     -location : *time.Location
     +NewService(Repository, Clock, *Location) : *Service
-    +ForUser(userID) : UserExpenses
+    +ForUser(owner UserID) : UserExpenses
     +Create(ctx, Expense) : Expense, error
     +Get(ctx, id) : Expense, error
     +List(ctx, ListFilter) : []Expense, error
     +ListUserIDs(ctx) : []int64, error
-    +Update(ctx, id, Patch) : Expense, error
+    +Update(ctx, ExpenseID, Changes) : Expense, error
     +Delete(ctx, id) : error
   }
   class UserExpenses <<scope>> {
     -service : *Service
-    -userID : int64
-    +Create(ctx, Expense) : Expense, error
+    -owner : UserID
+    +Create(ctx, UserCreateInput) : Expense, error
     +Get(ctx, id) : Expense, error
     +List(ctx, ListFilter) : []Expense, error
-    +Update(ctx, id, Patch) : Expense, error
+    +Update(ctx, ExpenseID, Changes) : Expense, error
     +Delete(ctx, id) : error
   }
   class ListFilter <<value object>> {
-    +UserID : *int64
+    +Owner : *UserID
     +Category : *Category
-    +From : *time.Time
-    +To : *time.Time
+    +From : *Day
+    +To : *Day
   }
-  class Patch <<value object>> {
-    +Amount : *int64
-    +Category : *Category
-    +SpentAt : *time.Time
-    +Comment : *string
+  class CreateInput <<value object>> {
+    +Owner : UserID
+    +Amount : Money
+    +Category : Category
+    +SpentOn : *Day
+    +Comment : Comment
   }
 }
 
@@ -100,7 +146,7 @@ package "service/agent (ИИ-агент)" {
     +Create(ctx, Expense) : Expense, error
     +Get(ctx, id) : Expense, error
     +List(ctx, ListFilter) : []Expense, error
-    +Update(ctx, id, Patch) : Expense, error
+    +Update(ctx, ExpenseID, Changes) : Expense, error
     +Delete(ctx, id) : error
   }
   interface History <<interface>> {
@@ -185,11 +231,11 @@ package "adapters/postgres" {
     -pool : *pgxpool.Pool
     -location : *time.Location
     +Create(ctx, Expense) : Expense, error
-    +Get(ctx, id) : Expense, error
+    +Get(ctx, ExpenseID) : Expense, error
     +List(ctx, ListFilter) : []Expense, error
-    +ListUserIDs(ctx) : []int64, error
+    +ListUserIDs(ctx) : []UserID, error
     +Update(ctx, Expense) : Expense, error
-    +Delete(ctx, id) : error
+    +Delete(ctx, ExpenseID) : error
   }
 }
 
@@ -198,7 +244,7 @@ package "adapters/httpapi" {
     +Create(ctx, Expense) : Expense, error
     +List(ctx, ListFilter) : []Expense, error
     +ListUserIDs(ctx) : []int64, error
-    +Update(ctx, id, Patch) : Expense, error
+    +Update(ctx, ExpenseID, Changes) : Expense, error
     +Delete(ctx, id) : error
   }
   class HTTPServer {
@@ -326,15 +372,20 @@ package "config" {
 }
 
 ' ===== Ассоциации внутри домена и сервиса =====
+Expense "1" *-- "1" Money : сумма
+Expense "1" *-- "1" Day : день траты
+Expense "1" *-- "1" UserID : владелец
+Expense "1" *-- "1" Comment
 Expense "1" --> "1" Category : категория
+Expense ..> Changes : «Apply»
 Service "1" o-- "1" Repository : хранит через
 Service "1" --> "1" Clock : время
 Service ..> UserExpenses : «create» (ForUser)
 UserExpenses "1" --> "1" Service : делегирует
 Service ..> ListFilter
-Service ..> Patch
+Service ..> CreateInput
+Service ..> Changes
 ListFilter ..> Category
-Patch ..> Category
 
 ' ===== Реализация интерфейсов (обобщение-реализация) =====
 PostgresRepository ..|> Repository
