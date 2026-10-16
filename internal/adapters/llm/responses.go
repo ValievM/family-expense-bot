@@ -171,51 +171,77 @@ func retryableResponse(err error) bool {
 }
 
 // Принимает: body — поток server-sent events.
-// Делает: копит текст из output_text.delta и вызовы функций из output_item.done до response.completed.
-// Возвращает: сообщение ассистента или ошибку для response.failed, response.incomplete, error и обрыва.
+// Делает: собирает ответ ассистента из событий: текст из дельт, вызовы функций, признак завершения.
+// Возвращает: сообщение либо ошибку сбоя, неполного ответа, обрыва потока или разбора.
 func readEventStream(body io.Reader) (ports.Message, error) {
-	reader := bufio.NewReaderSize(body, 64*1024)
-	message := ports.Message{Role: ports.RoleAssistant}
-	var text strings.Builder
-	completed := false
+	reply := replyBuilder{message: ports.Message{Role: ports.RoleAssistant}}
+	if err := eachEvent(body, reply.apply); err != nil {
+		return ports.Message{}, err
+	}
+	return reply.finish()
+}
 
+type replyBuilder struct {
+	message   ports.Message
+	text      strings.Builder
+	completed bool
+}
+
+// Принимает: event — очередное событие потока.
+// Делает: накапливает текст и вызовы функций, запоминает завершение.
+// Возвращает: ошибку для response.failed, error и response.incomplete, иначе nil.
+func (reply *replyBuilder) apply(event streamEvent) error {
+	switch event.Type {
+	case "response.output_text.delta":
+		reply.text.WriteString(event.Delta)
+	case "response.output_item.done":
+		if event.Item.Type == "function_call" {
+			reply.message.ToolCalls = append(reply.message.ToolCalls, ports.ToolCall{
+				ID: event.Item.CallID, Name: event.Item.Name, Arguments: json.RawMessage(event.Item.Arguments),
+			})
+		}
+	case "response.completed":
+		reply.completed = true
+	case "response.failed", "error", "response.incomplete":
+		return event.failure()
+	}
+	return nil
+}
+
+func (reply *replyBuilder) finish() (ports.Message, error) {
+	if !reply.completed {
+		return ports.Message{}, errors.New("responses stream ended without response.completed")
+	}
+	reply.message.Content = reply.text.String()
+	return reply.message, nil
+}
+
+// Принимает: body — поток events; handle — обработчик события.
+// Делает: читает строки потока, разбирает строки data: и передаёт события обработчику до конца потока или первой ошибки.
+// Возвращает: nil на конце потока либо ошибку чтения, разбора или обработчика.
+func eachEvent(body io.Reader, handle func(streamEvent) error) error {
+	reader := bufio.NewReaderSize(body, 64*1024)
 	for {
 		line, err := reader.ReadString('\n')
 		if len(line) > maxStreamLine {
-			return ports.Message{}, errors.New("responses stream line is too long")
+			return errors.New("responses stream line is too long")
 		}
 		if data, found := strings.CutPrefix(strings.TrimRight(line, "\r\n"), "data:"); found {
 			event, parseErr := parseEvent(strings.TrimSpace(data))
 			if parseErr != nil {
-				return ports.Message{}, parseErr
+				return parseErr
 			}
-			switch event.Type {
-			case "response.output_text.delta":
-				text.WriteString(event.Delta)
-			case "response.output_item.done":
-				if event.Item.Type == "function_call" {
-					message.ToolCalls = append(message.ToolCalls, ports.ToolCall{
-						ID: event.Item.CallID, Name: event.Item.Name, Arguments: json.RawMessage(event.Item.Arguments),
-					})
-				}
-			case "response.completed":
-				completed = true
-			case "response.failed", "error", "response.incomplete":
-				return ports.Message{}, event.failure()
+			if handleErr := handle(event); handleErr != nil {
+				return handleErr
 			}
+		}
+		if errors.Is(err, io.EOF) {
+			return nil
 		}
 		if err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			return ports.Message{}, fmt.Errorf("read responses stream: %w", err)
+			return fmt.Errorf("read responses stream: %w", err)
 		}
 	}
-	if !completed {
-		return ports.Message{}, errors.New("responses stream ended without response.completed")
-	}
-	message.Content = text.String()
-	return message, nil
 }
 
 var _ ports.LLM = (*ResponsesClient)(nil)

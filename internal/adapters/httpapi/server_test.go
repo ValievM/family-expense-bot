@@ -78,7 +78,7 @@ func (stub *stubService) Delete(_ context.Context, id domain.ExpenseID) error {
 
 func do(t *testing.T, stub *stubService, method, target, body string) *httptest.ResponseRecorder {
 	t.Helper()
-	handler := httpapi.NewServer(stub, slog.New(slog.NewTextHandler(io.Discard, nil))).Handler()
+	handler := httpapi.NewServer(stub, pinger{}, slog.New(slog.NewTextHandler(io.Discard, nil))).Handler()
 	request := httptest.NewRequest(method, target, strings.NewReader(body))
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
@@ -256,10 +256,26 @@ func TestErrorMapping(t *testing.T) {
 }
 
 // Проверяет: /healthz отвечает 200.
+type pinger struct{ err error }
+
+func (p pinger) Ping(context.Context) error { return p.err }
+
 func TestHealth(t *testing.T) {
 	recorder := do(t, &stubService{}, http.MethodGet, "/healthz", "")
 
 	if recorder.Code != http.StatusOK {
 		t.Errorf("status = %d, want 200", recorder.Code)
+	}
+}
+
+// Проверяет: при недоступной базе /healthz отвечает 503 и не раскрывает причину.
+func TestHealthReportsDatabaseOutage(t *testing.T) {
+	handler := httpapi.NewServer(&stubService{}, pinger{err: io.ErrClosedPipe}, slog.New(slog.NewTextHandler(io.Discard, nil))).Handler()
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+
+	if recorder.Code != http.StatusServiceUnavailable || strings.Contains(recorder.Body.String(), "pipe") {
+		t.Errorf("status = %d, body = %s; want 503 without internals", recorder.Code, recorder.Body)
 	}
 }

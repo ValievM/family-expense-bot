@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 
@@ -11,7 +12,17 @@ import (
 // Принимает: w — ответ.
 // Делает: отвечает 200 со статусом ok.
 // Возвращает: ничего.
-func (server *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
+// Принимает: w, r — ответ и запрос.
+// Делает: проверяет доступность базы за healthTimeout.
+// Возвращает: 200 {"status":"ok"} либо 503 {"status":"unavailable"}, если база не отвечает.
+func (server *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), healthTimeout)
+	defer cancel()
+	if err := server.health.Ping(ctx); err != nil {
+		server.logger.WarnContext(r.Context(), "health check failed", "error", err)
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "unavailable"})
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 

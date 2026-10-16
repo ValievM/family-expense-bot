@@ -52,7 +52,7 @@ func main() {
 }
 
 // Принимает: ничего.
-// Делает: читает конфиг, готовит базу, собирает сервис, API и бота, работает до сигнала и гасит всё по порядку.
+// Делает: читает конфиг, готовит базу, собирает сервис, запускает API и бота, ждёт сигнала и гасит всё по порядку.
 // Возвращает: nil при штатной остановке или первую ошибку запуска либо работы.
 func run() error {
 	cfg, err := config.Load(os.Getenv)
@@ -72,43 +72,63 @@ func run() error {
 
 	clock := systemclock.Clock{}
 	service := expense.NewService(postgres.NewRepository(pool), clock, cfg.Location)
-	httpServer := &http.Server{
-		Addr:              cfg.HTTPAddr,
-		Handler:           httpapi.NewServer(service, logger).Handler(),
-		ReadHeaderTimeout: readHeaderTimeout,
-		ReadTimeout:       readTimeout,
-		WriteTimeout:      writeTimeout,
-		IdleTimeout:       idleTimeout,
-	}
+	httpServer := newHTTPServer(cfg.HTTPAddr, httpapi.NewServer(service, pool, logger).Handler())
 
 	var workers sync.WaitGroup
 	failures := make(chan error, 2)
-	workers.Add(1)
-	go func() {
-		defer workers.Done()
+	goWorker(&workers, failures, func() error {
 		logger.Info("http api listening", "addr", cfg.HTTPAddr)
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			failures <- fmt.Errorf("serve http: %w", err)
+			return fmt.Errorf("serve http: %w", err)
 		}
-	}()
+		return nil
+	})
 
 	if cfg.TelegramEnabled {
 		bot, err := newBot(cfg, service, clock, logger)
 		if err != nil {
 			return err
 		}
-		workers.Add(1)
-		go func() {
-			defer workers.Done()
+		goWorker(&workers, failures, func() error {
 			logger.Info("telegram bot started", "llm_model", cfg.LLMModel)
-			if err := bot.Run(ctx); err != nil {
-				failures <- fmt.Errorf("run telegram bot: %w", err)
-			}
-		}()
+			return bot.Run(ctx)
+		})
 	} else {
 		logger.Warn("TELEGRAM_BOT_TOKEN is empty: the bot is disabled and only the REST API runs")
 	}
 
+	return waitAndShutdown(ctx, stop, failures, &workers, httpServer, logger)
+}
+
+func newHTTPServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: readHeaderTimeout,
+		ReadTimeout:       readTimeout,
+		WriteTimeout:      writeTimeout,
+		IdleTimeout:       idleTimeout,
+	}
+}
+
+// Принимает: workers — счётчик; failures — канал ошибок; job — долгая задача.
+// Делает: запускает задачу в горутине, учитывая её в счётчике, и передаёт ненулевую ошибку в канал.
+// Возвращает: ничего.
+func goWorker(workers *sync.WaitGroup, failures chan<- error, job func() error) {
+	workers.Add(1)
+	go func() {
+		defer workers.Done()
+		if err := job(); err != nil {
+			failures <- err
+		}
+	}()
+}
+
+// Принимает: ctx и stop — контекст сигнала и его отмена; failures — ошибки задач; workers — ожидание; httpServer, logger.
+// Делает: ждёт сигнала или первой ошибки задачи, затем останавливает HTTP-сервер и дожидается задач.
+// Возвращает: первую ошибку работы вместе с ошибкой остановки либо nil.
+func waitAndShutdown(ctx context.Context, stop context.CancelFunc, failures <-chan error,
+	workers *sync.WaitGroup, httpServer *http.Server, logger *slog.Logger) error {
 	var runErr error
 	select {
 	case <-ctx.Done():

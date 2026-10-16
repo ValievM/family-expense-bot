@@ -37,85 +37,147 @@ type callbackResult struct {
 }
 
 // Принимает: ctx; oauth — клиент сервера авторизации; options — настройки входа.
-// Делает: поднимает callback-сервер, открывает браузер, проверяет state, меняет код по PKCE, требует право на подписку.
+// Делает: поднимает callback-сервер, открывает браузер, проверяет ответ, меняет код по PKCE, требует право на подписку.
 // Возвращает: новые данные или ошибку отказа, таймаута либо обмена кода.
 func Login(ctx context.Context, oauth *OAuth, options LoginOptions) (Credentials, error) {
-	listener, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(options.Port)))
-	if err != nil {
-		return Credentials{}, fmt.Errorf("listen for the sign-in callback: %w", err)
-	}
-	defer func() { _ = listener.Close() }()
-	redirectURI := fmt.Sprintf("http://%s%s", listener.Addr().String(), callbackPath)
-
-	verifier, err := randomString(48)
+	secrets, err := newLoginSecrets()
 	if err != nil {
 		return Credentials{}, err
 	}
-	state, err := randomString(24)
+	identity, err := resolveIdentity(options)
 	if err != nil {
 		return Credentials{}, err
 	}
-	nonce, err := randomString(24)
+	callback, err := startCallbackServer(options.Port)
 	if err != nil {
 		return Credentials{}, err
 	}
-	hostID := ""
-	clientID, agentName := DynamicClientID, options.AgentName
-	if options.Existing != nil {
-		hostID, clientID, agentName = options.Existing.HostID, options.Existing.ClientID, ""
-	}
-	if hostID == "" {
-		hostID, err = newHostID()
-		if err != nil {
-			return Credentials{}, err
-		}
-	}
+	defer callback.stop()
 
-	results := make(chan callbackResult, 1)
-	server := &http.Server{Handler: callbackHandler(results), ReadHeaderTimeout: 5 * time.Second}
-	go func() { _ = server.Serve(listener) }()
-	defer func() { _ = server.Close() }()
-
-	authURL := oauth.authorizationURL(clientID, agentName, hostID, redirectURI, state, nonce, challenge(verifier))
+	authURL := oauth.authorizationURL(identity, callback.redirectURI, secrets)
 	if err := options.OpenBrowser(authURL); err != nil {
 		return Credentials{}, fmt.Errorf("open the browser: %w", err)
 	}
 
-	timeout := options.Timeout
+	result, err := callback.await(ctx, options.Timeout)
+	if err != nil {
+		return Credentials{}, err
+	}
+	clientID, err := result.validate(secrets.state, identity.clientID)
+	if err != nil {
+		return Credentials{}, err
+	}
+
+	credentials, err := oauth.exchangeCode(ctx, clientID, result.code, secrets.verifier, callback.redirectURI)
+	if err != nil {
+		return Credentials{}, err
+	}
+	credentials.HostID = identity.hostID
+	if !credentials.HasPlanScope() {
+		return Credentials{}, errors.New("plan usage was not granted: allow \"use my ChatGPT plan\" on the consent screen")
+	}
+	return credentials, nil
+}
+
+type loginSecrets struct {
+	verifier, state, nonce string
+}
+
+type loginIdentity struct {
+	clientID, hostID, agentName string
+}
+
+type callbackServer struct {
+	redirectURI string
+	results     <-chan callbackResult
+	stop        func()
+}
+
+// Принимает: ничего.
+// Делает: генерирует одноразовые значения PKCE, state и nonce для одной попытки входа.
+// Возвращает: набор секретов или ошибку источника случайности.
+func newLoginSecrets() (loginSecrets, error) {
+	var secrets loginSecrets
+	var err error
+	for target, length := range map[*string]int{&secrets.verifier: 48, &secrets.state: 24, &secrets.nonce: 24} {
+		if *target, err = randomString(length); err != nil {
+			return loginSecrets{}, err
+		}
+	}
+	return secrets, nil
+}
+
+// Принимает: options — настройки входа.
+// Делает: берёт идентификаторы клиента и хоста из прежнего входа либо готовит регистрацию с новым хостом.
+// Возвращает: идентичность для запроса входа; имя приложения заполнено только при первой регистрации.
+func resolveIdentity(options LoginOptions) (loginIdentity, error) {
+	identity := loginIdentity{clientID: DynamicClientID, agentName: options.AgentName}
+	if options.Existing != nil {
+		identity = loginIdentity{clientID: options.Existing.ClientID, hostID: options.Existing.HostID}
+	}
+	if identity.hostID == "" {
+		hostID, err := newHostID()
+		if err != nil {
+			return loginIdentity{}, err
+		}
+		identity.hostID = hostID
+	}
+	return identity, nil
+}
+
+// Принимает: port — порт на 127.0.0.1; ноль выбирает свободный.
+// Делает: слушает порт и запускает сервер приёма ответа браузера.
+// Возвращает: адрес возврата, канал результата и функцию остановки либо ошибку порта.
+func startCallbackServer(port int) (callbackServer, error) {
+	listener, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
+	if err != nil {
+		return callbackServer{}, fmt.Errorf("listen for the sign-in callback: %w", err)
+	}
+	results := make(chan callbackResult, 1)
+	server := &http.Server{Handler: callbackHandler(results), ReadHeaderTimeout: 5 * time.Second}
+	go func() { _ = server.Serve(listener) }()
+	return callbackServer{
+		redirectURI: fmt.Sprintf("http://%s%s", listener.Addr().String(), callbackPath),
+		results:     results,
+		stop:        func() { _ = server.Close() },
+	}, nil
+}
+
+// Принимает: ctx; timeout — сколько ждать, ноль означает loginTimeout.
+// Делает: ждёт ответ браузера.
+// Возвращает: параметры возврата либо ошибку таймаута или отмены.
+func (callback callbackServer) await(ctx context.Context, timeout time.Duration) (callbackResult, error) {
 	if timeout == 0 {
 		timeout = loginTimeout
 	}
 	waitCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	var result callbackResult
 	select {
-	case result = <-results:
+	case result := <-callback.results:
+		return result, nil
 	case <-waitCtx.Done():
-		return Credentials{}, fmt.Errorf("sign-in was not completed in time: %w", waitCtx.Err())
+		return callbackResult{}, fmt.Errorf("sign-in was not completed in time: %w", waitCtx.Err())
 	}
+}
 
+// Принимает: state — ожидаемое значение; knownClientID — идентификатор клиента, известный до ответа.
+// Делает: отклоняет отказ пользователя, чужой state и ответ без выданного идентификатора клиента.
+// Возвращает: идентификатор клиента для обмена кода либо ошибку.
+func (result callbackResult) validate(state, knownClientID string) (string, error) {
 	if result.errorCode != "" {
-		return Credentials{}, fmt.Errorf("sign-in was refused: %s", result.errorCode)
+		return "", fmt.Errorf("sign-in was refused: %s", result.errorCode)
 	}
 	if result.state != state {
-		return Credentials{}, errors.New("sign-in callback has an unexpected state; start again")
+		return "", errors.New("sign-in callback has an unexpected state; start again")
 	}
+	clientID := knownClientID
 	if result.clientID != "" {
 		clientID = result.clientID
 	}
 	if clientID == DynamicClientID {
-		return Credentials{}, errors.New("the server did not issue a client id")
+		return "", errors.New("the server did not issue a client id")
 	}
-
-	credentials, err := oauth.exchangeCode(ctx, clientID, result.code, verifier, redirectURI)
-	if err != nil {
-		return Credentials{}, err
-	}
-	credentials.HostID = hostID
-	if !credentials.HasPlanScope() {
-		return Credentials{}, errors.New("plan usage was not granted: allow \"use my ChatGPT plan\" on the consent screen")
-	}
-	return credentials, nil
+	return clientID, nil
 }
 
 // Принимает: results — канал для результата.
@@ -143,24 +205,24 @@ func callbackHandler(results chan<- callbackResult) http.Handler {
 	return mux
 }
 
-// Принимает: параметры запроса входа; agentName нужен только при первой регистрации.
-// Делает: собирает адрес страницы входа.
+// Принимает: identity — клиент и хост; redirectURI — адрес возврата; secrets — одноразовые значения попытки.
+// Делает: собирает адрес страницы входа; имя приложения передаётся только при первой регистрации.
 // Возвращает: полный URL.
-func (oauth *OAuth) authorizationURL(clientID, agentName, hostID, redirectURI, state, nonce, codeChallenge string) string {
+func (oauth *OAuth) authorizationURL(identity loginIdentity, redirectURI string, secrets loginSecrets) string {
 	query := url.Values{
-		"client_id":             {clientID},
-		"ext_agent_host_id":     {hostID},
+		"client_id":             {identity.clientID},
+		"ext_agent_host_id":     {identity.hostID},
 		"response_type":         {"code"},
 		"redirect_uri":          {redirectURI},
 		"scope":                 {loginScope},
 		"resource":              {Resource},
-		"state":                 {state},
-		"nonce":                 {nonce},
-		"code_challenge":        {codeChallenge},
+		"state":                 {secrets.state},
+		"nonce":                 {secrets.nonce},
+		"code_challenge":        {challenge(secrets.verifier)},
 		"code_challenge_method": {"S256"},
 	}
-	if agentName != "" {
-		query.Set("agent_name_hint", agentName)
+	if identity.agentName != "" {
+		query.Set("agent_name_hint", identity.agentName)
 	}
 	return oauth.AuthorizeURL + "?" + query.Encode()
 }

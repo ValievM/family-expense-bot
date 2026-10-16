@@ -4,23 +4,28 @@ package httpapi
 import (
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/ValievM/family-expense-bot/internal/ports"
 )
 
+// healthTimeout ограничивает проверку базы в /healthz.
+const healthTimeout = 2 * time.Second
+
 type Server struct {
 	expenses ports.ExpenseService
+	health   ports.Pinger
 	logger   *slog.Logger
 }
 
-// Принимает: expenses — сервис расходов, logger — логгер (nil заменяется на slog.Default()).
+// Принимает: expenses — сервис расходов; health — проверка базы для /healthz; logger — логгер (nil заменяется на slog.Default()).
 // Делает: создаёт Server.
 // Возвращает: *Server.
-func NewServer(expenses ports.ExpenseService, logger *slog.Logger) *Server {
+func NewServer(expenses ports.ExpenseService, health ports.Pinger, logger *slog.Logger) *Server {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Server{expenses: expenses, logger: logger}
+	return &Server{expenses: expenses, health: health, logger: logger}
 }
 
 // Принимает: ничего.

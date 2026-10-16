@@ -38,48 +38,62 @@ type Config struct {
 // Делает: читает настройки, подставляет значения по умолчанию, проверяет обязательные и связанные поля.
 // Возвращает: Config либо ошибку со всеми найденными проблемами сразу.
 func Load(getenv func(string) string) (Config, error) {
-	read := func(key, fallback string) string {
-		if value := strings.TrimSpace(getenv(key)); value != "" {
-			return value
-		}
-		return fallback
+	cfg := readSettings(getenv)
+
+	problems := cfg.validate()
+	var err error
+	if cfg.AllowedUserIDs, err = parseUserIDs(getenv("ALLOWED_USER_IDS")); err != nil {
+		problems = append(problems, err)
+	}
+	zone := readOr(getenv, "TZ", defaultTimeZone)
+	if cfg.Location, err = time.LoadLocation(zone); err != nil {
+		problems = append(problems, fmt.Errorf("TZ %q is not a valid time zone: %w", zone, err))
 	}
 
-	cfg := Config{
-		DatabaseURL:   read("DATABASE_URL", ""),
-		HTTPAddr:      read("HTTP_ADDR", defaultHTTPAddr),
-		TelegramToken: read("TELEGRAM_BOT_TOKEN", ""),
-		LLMBaseURL:    read("LLM_BASE_URL", defaultLLMBaseURL),
-		LLMAPIKey:     read("LLM_API_KEY", ""),
-		LLMAuth:       strings.ToLower(read("LLM_AUTH", AuthAPIKey)),
-		LLMAuthFile:   read("LLM_AUTH_FILE", defaultAuthFile),
+	if len(problems) > 0 {
+		return Config{}, fmt.Errorf("invalid configuration: %w", errors.Join(problems...))
 	}
-	zone := read("TZ", defaultTimeZone)
+	return cfg, nil
+}
+
+func readOr(getenv func(string) string, key, fallback string) string {
+	if value := strings.TrimSpace(getenv(key)); value != "" {
+		return value
+	}
+	return fallback
+}
+
+// Принимает: getenv — чтение переменной окружения.
+// Делает: читает строковые настройки с значениями по умолчанию; без проверок.
+// Возвращает: частично заполненный Config (без Location и AllowedUserIDs).
+func readSettings(getenv func(string) string) Config {
+	cfg := Config{
+		DatabaseURL:   readOr(getenv, "DATABASE_URL", ""),
+		HTTPAddr:      readOr(getenv, "HTTP_ADDR", defaultHTTPAddr),
+		TelegramToken: readOr(getenv, "TELEGRAM_BOT_TOKEN", ""),
+		LLMBaseURL:    readOr(getenv, "LLM_BASE_URL", defaultLLMBaseURL),
+		LLMAPIKey:     readOr(getenv, "LLM_API_KEY", ""),
+		LLMAuth:       strings.ToLower(readOr(getenv, "LLM_AUTH", AuthAPIKey)),
+		LLMAuthFile:   readOr(getenv, "LLM_AUTH_FILE", defaultAuthFile),
+	}
 	cfg.TelegramEnabled = cfg.TelegramToken != ""
 	// В режиме подписки модель по умолчанию выбирается из списка, доступного аккаунту.
+	modelFallback := ""
 	if cfg.LLMAuth == AuthAPIKey {
-		cfg.LLMModel = read("LLM_MODEL", defaultLLMModel)
-	} else {
-		cfg.LLMModel = read("LLM_MODEL", "")
+		modelFallback = defaultLLMModel
 	}
+	cfg.LLMModel = readOr(getenv, "LLM_MODEL", modelFallback)
+	return cfg
+}
 
+// Принимает: ничего.
+// Делает: проверяет обязательные и связанные настройки.
+// Возвращает: найденные проблемы (пусто, если всё в порядке).
+func (cfg Config) validate() []error {
 	var problems []error
 	if cfg.DatabaseURL == "" {
 		problems = append(problems, errors.New("DATABASE_URL is required"))
 	}
-
-	location, err := time.LoadLocation(zone)
-	if err != nil {
-		problems = append(problems, fmt.Errorf("TZ %q is not a valid time zone: %w", zone, err))
-	}
-	cfg.Location = location
-
-	allowed, err := parseUserIDs(getenv("ALLOWED_USER_IDS"))
-	if err != nil {
-		problems = append(problems, err)
-	}
-	cfg.AllowedUserIDs = allowed
-
 	if cfg.LLMAuth != AuthAPIKey && cfg.LLMAuth != AuthOAuth {
 		problems = append(problems, fmt.Errorf("LLM_AUTH must be %q or %q, got %q", AuthAPIKey, AuthOAuth, cfg.LLMAuth))
 	}
@@ -87,11 +101,7 @@ func Load(getenv func(string) string) (Config, error) {
 	if cfg.TelegramEnabled && cfg.LLMAuth == AuthAPIKey && cfg.LLMAPIKey == "" && cfg.LLMBaseURL == defaultLLMBaseURL {
 		problems = append(problems, errors.New("LLM_API_KEY is required when the Telegram bot uses the OpenAI API"))
 	}
-
-	if len(problems) > 0 {
-		return Config{}, fmt.Errorf("invalid configuration: %w", errors.Join(problems...))
-	}
-	return cfg, nil
+	return problems
 }
 
 // Принимает: raw — строка Telegram ID через запятую, например "1, 2".
