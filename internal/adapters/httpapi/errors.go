@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/ValievM/family-expense-bot/internal/domain"
-	"github.com/ValievM/family-expense-bot/internal/service/expense"
+	"github.com/ValievM/family-expense-bot/internal/ports"
 )
 
 // errorBody — JSON-обёртка ошибки.
@@ -44,8 +44,8 @@ var errorRules = []errorRule{
 	{domain.ErrUnknownCategory, http.StatusBadRequest, "unknown_category"},
 	{domain.ErrInvalidDate, http.StatusBadRequest, "invalid_date"},
 	{domain.ErrCommentTooLong, http.StatusBadRequest, "comment_too_long"},
-	{expense.ErrInvalidPeriod, http.StatusBadRequest, "invalid_period"},
-	{expense.ErrNotFound, http.StatusNotFound, "not_found"},
+	{ports.ErrInvalidPeriod, http.StatusBadRequest, "invalid_period"},
+	{ports.ErrNotFound, http.StatusNotFound, "not_found"},
 }
 
 // Принимает: w — writer ответа, r — входящий запрос, err — ошибка для отображения.

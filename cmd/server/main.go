@@ -23,9 +23,11 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/adapters/httpapi"
 	"github.com/ValievM/family-expense-bot/internal/adapters/llm"
 	"github.com/ValievM/family-expense-bot/internal/adapters/postgres"
+	"github.com/ValievM/family-expense-bot/internal/adapters/systemclock"
 	"github.com/ValievM/family-expense-bot/internal/adapters/telegram"
 	"github.com/ValievM/family-expense-bot/internal/config"
 	"github.com/ValievM/family-expense-bot/internal/domain"
+	"github.com/ValievM/family-expense-bot/internal/ports"
 	"github.com/ValievM/family-expense-bot/internal/service/agent"
 	"github.com/ValievM/family-expense-bot/internal/service/agent/tools"
 	"github.com/ValievM/family-expense-bot/internal/service/expense"
@@ -65,7 +67,8 @@ func run() error {
 	}
 	defer pool.Close()
 
-	service := expense.NewService(postgres.NewRepository(pool), nil, cfg.Location)
+	clock := systemclock.Clock{}
+	service := expense.NewService(postgres.NewRepository(pool), clock, cfg.Location)
 	httpServer := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           httpapi.NewServer(service, logger).Handler(),
@@ -87,7 +90,7 @@ func run() error {
 	}()
 
 	if cfg.TelegramEnabled {
-		bot, err := newBot(cfg, service, logger)
+		bot, err := newBot(cfg, service, clock, logger)
 		if err != nil {
 			return err
 		}
@@ -163,23 +166,23 @@ func waitForDatabase(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 }
 
-// Принимает: cfg — конфигурация; service — сервис трат; logger — логгер.
+// Принимает: cfg — конфигурация; service — сервис трат; clock — часы; logger — логгер.
 // Делает: собирает цепочку LLM-клиент, агент, Telegram-бот; агенту выдаётся только фабрика трат, привязанных к автору сообщения.
 // Возвращает: готового бота либо ошибку, если выбран вход через ChatGPT, а входа ещё не было.
-func newBot(cfg config.Config, service *expense.Service, logger *slog.Logger) (*telegram.Bot, error) {
+func newBot(cfg config.Config, service *expense.Service, clock ports.Clock, logger *slog.Logger) (*telegram.Bot, error) {
 	model, err := newLLM(cfg)
 	if err != nil {
 		return nil, err
 	}
-	scope := func(owner domain.UserID) agent.UserExpenses { return service.ForUser(owner) }
-	assistant := agent.New(model, scope, tools.Default(), agent.WithLocation(cfg.Location), agent.WithLogger(logger))
+	scope := func(owner domain.UserID) ports.UserExpenses { return service.ForUser(owner) }
+	assistant := agent.New(model, scope, tools.Default(), clock, agent.WithLocation(cfg.Location), agent.WithLogger(logger))
 	return telegram.NewBot(telegram.NewClient(cfg.TelegramToken), assistant, cfg, telegram.WithLogger(logger)), nil
 }
 
 // Принимает: cfg — конфигурация с режимом LLM_AUTH.
 // Делает: выбирает способ доступа к модели: ключ API через Chat Completions или вход через ChatGPT через Responses API; при втором проверяет, что вход уже выполнен.
-// Возвращает: реализацию agent.LLM либо ошибку (например, chatgpt.ErrNotLoggedIn).
-func newLLM(cfg config.Config) (agent.LLM, error) {
+// Возвращает: реализацию ports.LLM либо ошибку (например, chatgpt.ErrNotLoggedIn).
+func newLLM(cfg config.Config) (ports.LLM, error) {
 	if cfg.LLMAuth != config.AuthOAuth {
 		return llm.NewClient(cfg.LLMBaseURL, cfg.LLMModel, llm.NewAPIKeyAuthorizer(cfg.LLMAPIKey)), nil
 	}

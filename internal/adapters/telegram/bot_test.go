@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ValievM/family-expense-bot/internal/adapters/telegram"
+	"github.com/ValievM/family-expense-bot/internal/ports"
 )
 
 // sentMessage — сообщение, отправленное ботом через фейковый шлюз.
@@ -95,7 +96,7 @@ func textUpdate(id, userID int64, chatType, text string) telegram.Update {
 // Принимает: t — тестовый контекст; gateway — шлюз; responder — обработчик; access — политика.
 // Делает: запускает бота в фоне и возвращает идемпотентную функцию остановки, которая ждёт завершения Run.
 // Возвращает: функцию stop.
-func runBot(t *testing.T, gateway *fakeGateway, responder telegram.Responder, access telegram.AccessPolicy) (stop func()) {
+func runBot(t *testing.T, gateway *fakeGateway, responder ports.Responder, access ports.AccessPolicy) (stop func()) {
 	t.Helper()
 	bot := telegram.NewBot(gateway, responder, access,
 		telegram.WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))), telegram.WithRetryDelay(time.Millisecond))

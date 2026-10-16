@@ -5,8 +5,7 @@ import (
 	"encoding/json"
 
 	"github.com/ValievM/family-expense-bot/internal/domain"
-	"github.com/ValievM/family-expense-bot/internal/service/agent"
-	"github.com/ValievM/family-expense-bot/internal/service/expense"
+	"github.com/ValievM/family-expense-bot/internal/ports"
 )
 
 // maxListedExpenses ограничивает размер ответа модели; итог считается по всем найденным тратам.
@@ -34,10 +33,10 @@ type listExpensesResult struct {
 // Принимает: ничего.
 // Делает: описывает инструмент list_expenses и необязательные фильтры.
 // Возвращает: ToolSpec без обязательных аргументов.
-func (tool listExpensesTool) Spec() agent.ToolSpec {
+func (tool listExpensesTool) Spec() ports.ToolSpec {
 	category := categoryProperty()
 	category["description"] = "Фильтр по категории. " + category["description"].(string)
-	return agent.ToolSpec{
+	return ports.ToolSpec{
 		Name:        "list_expenses",
 		Description: "Показать траты пользователя (новые сверху) с итогом total_rub. Без фильтров вернёт все.",
 		Parameters: objectSchema(map[string]any{
@@ -51,7 +50,7 @@ func (tool listExpensesTool) Spec() agent.ToolSpec {
 // Принимает: ctx — контекст запроса; expenses — траты владельца сообщения; arguments — JSON от модели.
 // Делает: применяет фильтры, считает итог и id последней траты по всем найденным записям и обрезает список до лимита.
 // Возвращает: listExpensesResult либо ошибку аргументов или периода.
-func (tool listExpensesTool) Execute(ctx context.Context, expenses agent.UserExpenses, arguments json.RawMessage) (any, error) {
+func (tool listExpensesTool) Execute(ctx context.Context, expenses ports.UserExpenses, arguments json.RawMessage) (any, error) {
 	var args listExpensesArguments
 	if err := decodeArguments(arguments, &args); err != nil {
 		return nil, err
@@ -65,7 +64,7 @@ func (tool listExpensesTool) Execute(ctx context.Context, expenses agent.UserExp
 		return nil, err
 	}
 
-	filter := expense.ListFilter{From: from, To: to}
+	filter := ports.ListFilter{From: from, To: to}
 	if args.Category != nil && *args.Category != "" {
 		category, err := domain.ParseCategory(*args.Category)
 		if err != nil {

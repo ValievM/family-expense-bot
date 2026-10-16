@@ -12,15 +12,8 @@ import (
 // refreshWindow — за сколько до истечения токен обновляется заранее.
 const refreshWindow = 2 * time.Minute
 
-// Store сохраняет и читает учётные данные; интерфейс нужен источнику токена и подменяется в тестах.
 type Store interface {
-	// Принимает: ничего.
-	// Делает: читает сохранённые данные.
-	// Возвращает: данные либо ErrNotLoggedIn и ошибки чтения.
 	Load() (Credentials, error)
-	// Принимает: credentials — данные для записи.
-	// Делает: сохраняет их.
-	// Возвращает: nil либо ошибку записи.
 	Save(credentials Credentials) error
 }
 

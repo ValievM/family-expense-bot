@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ValievM/family-expense-bot/internal/service/agent"
+	"github.com/ValievM/family-expense-bot/internal/ports"
 )
 
 const maxStreamLine = 1 << 20
@@ -32,7 +32,8 @@ type ResponsesClient struct {
 	model      string
 }
 
-var _ agent.LLM = (*ResponsesClient)(nil)
+// Проверка на этапе компиляции: ResponsesClient реализует порт LLM.
+var _ ports.LLM = (*ResponsesClient)(nil)
 
 // Принимает: baseURL — корень API; model — slug модели, пустая строка означает «взять первую доступную аккаунту»; authorizer — выдаёт заголовки авторизации; options — настройки.
 // Делает: создаёт клиента с тем же набором настроек, что и у Client.
@@ -48,33 +49,19 @@ func NewResponsesClient(baseURL, model string, authorizer Authorizer, options ..
 // Принимает: ctx — контекст; request — разговор и инструменты.
 // Делает: выбирает модель, отправляет запрос потоком и собирает ответ ассистента с повтором при временных сбоях.
 // Возвращает: сообщение ассистента (текст и/или вызовы инструментов) либо ошибку.
-func (client *ResponsesClient) Complete(ctx context.Context, request agent.Request) (agent.Message, error) {
+func (client *ResponsesClient) Complete(ctx context.Context, request ports.Request) (ports.Message, error) {
 	model, err := client.resolveModel(ctx)
 	if err != nil {
-		return agent.Message{}, err
+		return ports.Message{}, err
 	}
 	payload, err := json.Marshal(newResponsesRequest(model, request))
 	if err != nil {
-		return agent.Message{}, fmt.Errorf("encode responses request: %w", err)
+		return ports.Message{}, fmt.Errorf("encode responses request: %w", err)
 	}
 
-	var lastErr error
-	for attempt := 0; attempt <= maxRetries; attempt++ {
-		if attempt > 0 {
-			if err := sleep(ctx, client.backoff(attempt)); err != nil {
-				return agent.Message{}, err
-			}
-		}
-		reply, err := client.stream(ctx, payload)
-		if err == nil {
-			return reply, nil
-		}
-		lastErr = err
-		if !retryableResponse(err) {
-			break
-		}
-	}
-	return agent.Message{}, lastErr
+	return withRetries(ctx, client.backoff, retryableResponse, func() (ports.Message, error) {
+		return client.stream(ctx, payload)
+	})
 }
 
 // Принимает: ctx — контекст.
@@ -124,24 +111,24 @@ func (client *ResponsesClient) resolveModel(ctx context.Context) (string, error)
 // Принимает: ctx — контекст; payload — тело запроса.
 // Делает: отправляет запрос и читает поток событий до response.completed.
 // Возвращает: собранное сообщение либо *APIError при HTTP-отказе или ошибку потока.
-func (client *ResponsesClient) stream(ctx context.Context, payload []byte) (agent.Message, error) {
+func (client *ResponsesClient) stream(ctx context.Context, payload []byte) (ports.Message, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, client.baseURL+"/responses", bytes.NewReader(payload))
 	if err != nil {
-		return agent.Message{}, fmt.Errorf("build responses request: %w", err)
+		return ports.Message{}, fmt.Errorf("build responses request: %w", err)
 	}
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Accept", "text/event-stream")
 	if err := client.authorizer.Authorize(ctx, request); err != nil {
-		return agent.Message{}, fmt.Errorf("authorize responses request: %w", err)
+		return ports.Message{}, fmt.Errorf("authorize responses request: %w", err)
 	}
 
 	response, err := client.httpClient.Do(request)
 	if err != nil {
-		return agent.Message{}, fmt.Errorf("call responses API: %w", err)
+		return ports.Message{}, fmt.Errorf("call responses API: %w", err)
 	}
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
-		return agent.Message{}, readAPIError(response)
+		return ports.Message{}, readAPIError(response)
 	}
 	return readEventStream(response.Body)
 }
@@ -189,46 +176,46 @@ func retryableResponse(err error) bool {
 // Принимает: body — поток server-sent events.
 // Делает: разбирает события: накапливает текст из output_text.delta, вызовы функций из output_item.done и ждёт response.completed.
 // Возвращает: сообщение ассистента либо ошибку для response.failed, response.incomplete, error и оборванного потока.
-func readEventStream(body io.Reader) (agent.Message, error) {
+func readEventStream(body io.Reader) (ports.Message, error) {
 	reader := bufio.NewReaderSize(body, 64*1024)
-	message := agent.Message{Role: agent.RoleAssistant}
+	message := ports.Message{Role: ports.RoleAssistant}
 	var text strings.Builder
 	completed := false
 
 	for {
 		line, err := reader.ReadString('\n')
 		if len(line) > maxStreamLine {
-			return agent.Message{}, errors.New("responses stream line is too long")
+			return ports.Message{}, errors.New("responses stream line is too long")
 		}
 		if data, found := strings.CutPrefix(strings.TrimRight(line, "\r\n"), "data:"); found {
 			event, parseErr := parseEvent(strings.TrimSpace(data))
 			if parseErr != nil {
-				return agent.Message{}, parseErr
+				return ports.Message{}, parseErr
 			}
 			switch event.Type {
 			case "response.output_text.delta":
 				text.WriteString(event.Delta)
 			case "response.output_item.done":
 				if event.Item.Type == "function_call" {
-					message.ToolCalls = append(message.ToolCalls, agent.ToolCall{
+					message.ToolCalls = append(message.ToolCalls, ports.ToolCall{
 						ID: event.Item.CallID, Name: event.Item.Name, Arguments: json.RawMessage(event.Item.Arguments),
 					})
 				}
 			case "response.completed":
 				completed = true
 			case "response.failed", "error", "response.incomplete":
-				return agent.Message{}, event.failure()
+				return ports.Message{}, event.failure()
 			}
 		}
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break
 			}
-			return agent.Message{}, fmt.Errorf("read responses stream: %w", err)
+			return ports.Message{}, fmt.Errorf("read responses stream: %w", err)
 		}
 	}
 	if !completed {
-		return agent.Message{}, errors.New("responses stream ended without response.completed")
+		return ports.Message{}, errors.New("responses stream ended without response.completed")
 	}
 	message.Content = text.String()
 	return message, nil

@@ -86,17 +86,6 @@ package "domain (предметная область, DDD)" {
 }
 
 package "service/expense (сценарии трат)" {
-  interface Repository <<interface>> {
-    +Create(ctx, Expense) : Expense, error
-    +Get(ctx, ExpenseID) : Expense, error
-    +List(ctx, ListFilter) : []Expense, error
-    +ListUserIDs(ctx) : []UserID, error
-    +Update(ctx, Expense) : Expense, error
-    +Delete(ctx, ExpenseID) : error
-  }
-  interface Clock <<interface>> {
-    +Now() : time.Time
-  }
   class Service {
     -repository : Repository
     -clock : Clock
@@ -135,24 +124,6 @@ package "service/expense (сценарии трат)" {
 }
 
 package "service/agent (ИИ-агент)" {
-  interface LLM <<interface>> {
-    +Complete(ctx, Request) : Message, error
-  }
-  interface Tool <<interface>> {
-    +Spec() : ToolSpec
-    +Execute(ctx, AgentUserExpenses, json) : any, error
-  }
-  interface AgentUserExpenses <<interface>> {
-    +Create(ctx, Expense) : Expense, error
-    +Get(ctx, id) : Expense, error
-    +List(ctx, ListFilter) : []Expense, error
-    +Update(ctx, ExpenseID, Changes) : Expense, error
-    +Delete(ctx, id) : error
-  }
-  interface History <<interface>> {
-    +Recent(userID) : []Message
-    +Remember(userID, ...Message)
-  }
   class Agent {
     -llm : LLM
     -scope : ScopeFactory
@@ -207,22 +178,73 @@ package "service/agent/tools (инструменты агента)" {
   class addExpenseTool {
     -location : *time.Location
     +Spec() : ToolSpec
-    +Execute(ctx, AgentUserExpenses, json) : any, error
+    +Execute(ctx, PortUserExpenses, json) : any, error
   }
   class listExpensesTool {
     -location : *time.Location
     +Spec() : ToolSpec
-    +Execute(ctx, AgentUserExpenses, json) : any, error
+    +Execute(ctx, PortUserExpenses, json) : any, error
   }
   class updateExpenseTool {
     -location : *time.Location
     +Spec() : ToolSpec
-    +Execute(ctx, AgentUserExpenses, json) : any, error
+    +Execute(ctx, PortUserExpenses, json) : any, error
   }
   class deleteExpenseTool {
     -location : *time.Location
     +Spec() : ToolSpec
-    +Execute(ctx, AgentUserExpenses, json) : any, error
+    +Execute(ctx, PortUserExpenses, json) : any, error
+  }
+}
+
+package "ports (порты: интерфейсы между слоями)" {
+  interface ExpenseRepository <<interface>> {
+    +Create(ctx, Expense) : Expense, error
+    +Get(ctx, ExpenseID) : Expense, error
+    +List(ctx, ListFilter) : []Expense, error
+    +ListUserIDs(ctx) : []UserID, error
+    +Update(ctx, Expense) : Expense, error
+    +Delete(ctx, ExpenseID) : error
+  }
+  interface ExpenseService <<interface>> {
+    +Create(ctx, CreateInput) : Expense, error
+    +List(ctx, ListFilter) : []Expense, error
+    +ListUserIDs(ctx) : []UserID, error
+    +Update(ctx, ExpenseID, Changes) : Expense, error
+    +Delete(ctx, ExpenseID) : error
+  }
+  interface "UserExpenses" as PortUserExpenses <<interface>> {
+    +Create(ctx, UserCreateInput) : Expense, error
+    +Get(ctx, ExpenseID) : Expense, error
+    +List(ctx, ListFilter) : []Expense, error
+    +Update(ctx, ExpenseID, Changes) : Expense, error
+    +Delete(ctx, ExpenseID) : error
+  }
+  interface LLM <<interface>> {
+    +Complete(ctx, Request) : Message, error
+  }
+  interface Tool <<interface>> {
+    +Spec() : ToolSpec
+    +Execute(ctx, PortUserExpenses, json) : any, error
+  }
+  interface History <<interface>> {
+    +Recent(userID) : []Message
+    +Remember(userID, ...Message)
+  }
+  interface Clock <<interface>> {
+    +Now() : time.Time
+  }
+  interface Responder <<interface>> {
+    +Handle(ctx, userID, text) : string, error
+  }
+  interface AccessPolicy <<interface>> {
+    +IsUserAllowed(userID) : bool
+  }
+}
+
+package "adapters/systemclock" {
+  class SystemClock {
+    +Now() : time.Time
   }
 }
 
@@ -240,13 +262,6 @@ package "adapters/postgres" {
 }
 
 package "adapters/httpapi" {
-  interface ExpenseService <<interface>> {
-    +Create(ctx, Expense) : Expense, error
-    +List(ctx, ListFilter) : []Expense, error
-    +ListUserIDs(ctx) : []int64, error
-    +Update(ctx, ExpenseID, Changes) : Expense, error
-    +Delete(ctx, id) : error
-  }
   class HTTPServer {
     -expenses : ExpenseService
     -location : *time.Location
@@ -326,12 +341,6 @@ package "adapters/telegram" {
     +SendMessage(ctx, chatID, text) : error
     +SendTyping(ctx, chatID) : error
   }
-  interface Responder <<interface>> {
-    +Handle(ctx, userID, text) : string, error
-  }
-  interface AccessPolicy <<interface>> {
-    +IsUserAllowed(userID) : bool
-  }
   class Bot {
     -gateway : Gateway
     -responder : Responder
@@ -378,7 +387,7 @@ Expense "1" *-- "1" UserID : владелец
 Expense "1" *-- "1" Comment
 Expense "1" --> "1" Category : категория
 Expense ..> Changes : «Apply»
-Service "1" o-- "1" Repository : хранит через
+Service "1" o-- "1" ExpenseRepository : хранит через
 Service "1" --> "1" Clock : время
 Service ..> UserExpenses : «create» (ForUser)
 UserExpenses "1" --> "1" Service : делегирует
@@ -388,8 +397,9 @@ Service ..> Changes
 ListFilter ..> Category
 
 ' ===== Реализация интерфейсов (обобщение-реализация) =====
-PostgresRepository ..|> Repository
-UserExpenses ..|> AgentUserExpenses
+PostgresRepository ..|> ExpenseRepository
+SystemClock ..|> Clock
+UserExpenses ..|> PortUserExpenses
 Service ..|> ExpenseService
 memoryHistory ..|> History
 addExpenseTool ..|> Tool
@@ -409,9 +419,9 @@ Config ..|> AccessPolicy
 Agent "1" --> "1" LLM
 Agent "1" *-- "1" ToolSet : состоит из
 Agent "1" --> "1" History
-Agent ..> AgentUserExpenses : получает по ScopeFactory
+Agent ..> PortUserExpenses : получает по ScopeFactory
 ToolSet "1" o-- "1..*" Tool
-Tool ..> AgentUserExpenses : работает только\nс владельцем сообщения
+Tool ..> PortUserExpenses : работает только\nс владельцем сообщения
 addExpenseTool ..> ArgumentError : «throws»
 LLM ..> Request
 LLM ..> Message
@@ -437,7 +447,7 @@ Gateway ..> Update
 note bottom of UserExpenses
   Изоляция пользователей по конструкции: у типа нет
   параметра «владелец», user_id задаётся кодом из Telegram,
-  а не моделью. Агент видит только интерфейс AgentUserExpenses.
+  а не моделью. Агент видит только интерфейс PortUserExpenses.
 end note
 
 note right of Config
@@ -450,8 +460,8 @@ legend bottom
   ──▷ (пунктир) реализация интерфейса;  ◆── композиция;  ◇── агрегация;
   ──> ассоциация (направленная);  ┄> зависимость.
   Видимость: + открытая (exported), − закрытая (unexported).
-  Имена типов в пакетах: PostgresRepository = postgres.Repository,
+  Имена типов в пакетах: PostgresRepository = postgres.ExpenseRepository,
   ChatClient = llm.Client, HTTPServer = httpapi.Server,
-  TelegramClient = telegram.Client, AgentUserExpenses = agent.UserExpenses.
+  TelegramClient = telegram.Client, PortUserExpenses = agent.UserExpenses.
 endlegend
 @enduml

@@ -17,9 +17,9 @@ linters:
     paths:
       - web
     rules:
-      # Function comments follow the project format (Принимает/Делает/Возвращает), not the "Name ..." form.
+      # Comments follow the project policy (see AGENTS.md): own format for functions, none for interfaces.
       - linters: [revive]
-        text: "comment on exported"
+        text: "comment on exported|should have comment"
 formatters:
   enable:
     - gofmt

@@ -11,7 +11,8 @@ import (
 
 	"github.com/ValievM/family-expense-bot/internal/adapters/postgres"
 	"github.com/ValievM/family-expense-bot/internal/domain"
-	"github.com/ValievM/family-expense-bot/internal/service/expense"
+	"github.com/ValievM/family-expense-bot/internal/domain/domaintest"
+	"github.com/ValievM/family-expense-bot/internal/ports"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -23,8 +24,8 @@ func TestRepositoryPostgresCRUDAndFilters(t *testing.T) {
 	repository := newPostgresRepository(t)
 	ctx := context.Background()
 	base := time.Now().UnixNano()
-	owner := mustUser(t, base)
-	other := mustUser(t, base+1)
+	owner := domaintest.UserID(t, base)
+	other := domaintest.UserID(t, base+1)
 
 	createdAt := time.Date(2025, time.February, 20, 12, 30, 0, 0, time.UTC)
 	inputs := []domain.Expense{
@@ -60,15 +61,15 @@ func TestRepositoryPostgresCRUDAndFilters(t *testing.T) {
 	}
 	assertSameValues(t, got, inputs[0])
 
-	allForOwner, err := repository.List(ctx, expense.ListFilter{Owner: &owner})
+	allForOwner, err := repository.List(ctx, ports.ListFilter{Owner: &owner})
 	if err != nil {
 		t.Fatalf("List by owner: %v", err)
 	}
 	assertIDs(t, "List by owner", allForOwner, created[0].ID(), created[1].ID(), created[3].ID())
 
-	from, to := mustDay(t, "2025-02-05"), mustDay(t, "2025-02-10")
+	from, to := domaintest.Day(t, "2025-02-05"), domaintest.Day(t, "2025-02-10")
 	category := domain.CategoryFood
-	filtered, err := repository.List(ctx, expense.ListFilter{Owner: &owner, Category: &category, From: &from, To: &to})
+	filtered, err := repository.List(ctx, ports.ListFilter{Owner: &owner, Category: &category, From: &from, To: &to})
 	if err != nil {
 		t.Fatalf("List by owner, category, and inclusive period: %v", err)
 	}
@@ -83,10 +84,10 @@ func TestRepositoryPostgresCRUDAndFilters(t *testing.T) {
 	}
 
 	changes := domain.Changes{
-		Amount:   ptr(mustMoney(t, 5550)),
+		Amount:   ptr(domaintest.Money(t, 5550)),
 		Category: ptr(domain.CategoryHousing),
-		SpentOn:  ptr(mustDay(t, "2025-02-12")),
-		Comment:  ptr(mustComment(t, "updated comment")),
+		SpentOn:  ptr(domaintest.Day(t, "2025-02-12")),
+		Comment:  ptr(domaintest.Comment(t, "updated comment")),
 	}
 	updatedAt := createdAt.Add(24 * time.Hour)
 	toUpdate, err := created[0].Apply(changes, updatedAt)
@@ -105,13 +106,13 @@ func TestRepositoryPostgresCRUDAndFilters(t *testing.T) {
 	if err := repository.Delete(ctx, created[2].ID()); err != nil {
 		t.Fatalf("Delete(%d): %v", created[2].ID(), err)
 	}
-	if _, err := repository.Get(ctx, created[2].ID()); !errors.Is(err, expense.ErrNotFound) {
+	if _, err := repository.Get(ctx, created[2].ID()); !errors.Is(err, ports.ErrNotFound) {
 		t.Fatalf("Get after Delete error = %v, want ErrNotFound", err)
 	}
-	if _, err := repository.Update(ctx, created[2]); !errors.Is(err, expense.ErrNotFound) {
+	if _, err := repository.Update(ctx, created[2]); !errors.Is(err, ports.ErrNotFound) {
 		t.Fatalf("Update missing expense error = %v, want ErrNotFound", err)
 	}
-	if err := repository.Delete(ctx, created[2].ID()); !errors.Is(err, expense.ErrNotFound) {
+	if err := repository.Delete(ctx, created[2].ID()); !errors.Is(err, ports.ErrNotFound) {
 		t.Fatalf("Delete missing expense error = %v, want ErrNotFound", err)
 	}
 	userIDs, err = repository.ListUserIDs(ctx)
@@ -129,7 +130,7 @@ func TestRepositoryPostgresCRUDAndFilters(t *testing.T) {
 func TestRepositoryPostgresDayRoundTripWithoutDrift(t *testing.T) {
 	repository := newPostgresRepository(t)
 	ctx := context.Background()
-	owner := mustUser(t, time.Now().UnixNano())
+	owner := domaintest.UserID(t, time.Now().UnixNano())
 	createdAt := time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC)
 
 	for _, value := range []string{"2025-01-01", "2024-02-29", "2025-12-31", "2025-06-15"} {
@@ -192,64 +193,16 @@ func newExpense(t *testing.T, owner domain.UserID, kopecks int64, category domai
 	t.Helper()
 	item, err := domain.NewExpense(domain.NewExpenseInput{
 		Owner:    owner,
-		Amount:   mustMoney(t, kopecks),
+		Amount:   domaintest.Money(t, kopecks),
 		Category: category,
-		SpentOn:  mustDay(t, day),
-		Comment:  mustComment(t, comment),
+		SpentOn:  domaintest.Day(t, day),
+		Comment:  domaintest.Comment(t, comment),
 		At:       createdAt,
 	})
 	if err != nil {
 		t.Fatalf("NewExpense: %v", err)
 	}
 	return item
-}
-
-// Принимает: t — тестовый контекст; value — Telegram ID.
-// Делает: создаёт UserID.
-// Возвращает: UserID.
-func mustUser(t *testing.T, value int64) domain.UserID {
-	t.Helper()
-	user, err := domain.NewUserID(value)
-	if err != nil {
-		t.Fatalf("NewUserID(%d): %v", value, err)
-	}
-	return user
-}
-
-// Принимает: t — тестовый контекст; kopecks — сумма в копейках.
-// Делает: создаёт Money.
-// Возвращает: Money.
-func mustMoney(t *testing.T, kopecks int64) domain.Money {
-	t.Helper()
-	money, err := domain.NewMoney(kopecks)
-	if err != nil {
-		t.Fatalf("NewMoney(%d): %v", kopecks, err)
-	}
-	return money
-}
-
-// Принимает: t — тестовый контекст; value — день в формате YYYY-MM-DD.
-// Делает: разбирает день через domain.ParseDay.
-// Возвращает: Day.
-func mustDay(t *testing.T, value string) domain.Day {
-	t.Helper()
-	day, err := domain.ParseDay(value)
-	if err != nil {
-		t.Fatalf("ParseDay(%q): %v", value, err)
-	}
-	return day
-}
-
-// Принимает: t — тестовый контекст; text — текст комментария.
-// Делает: создаёт Comment.
-// Возвращает: Comment.
-func mustComment(t *testing.T, text string) domain.Comment {
-	t.Helper()
-	comment, err := domain.NewComment(text)
-	if err != nil {
-		t.Fatalf("NewComment(%q): %v", text, err)
-	}
-	return comment
 }
 
 // Принимает: value — любое значение.

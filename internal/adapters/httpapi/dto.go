@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/ValievM/family-expense-bot/internal/domain"
-	"github.com/ValievM/family-expense-bot/internal/service/expense"
+	"github.com/ValievM/family-expense-bot/internal/ports"
 )
 
 // expenseResponse — JSON-представление расхода, Amount в копейках.
@@ -72,9 +72,9 @@ func toResponse(item domain.Expense) expenseResponse {
 
 // Принимает: ничего.
 // Делает: переводит поля запроса в доменные значения валидирующими конструкторами.
-// Возвращает: expense.CreateInput либо доменную ошибку или requestError invalid_date.
-func (request createExpenseRequest) toInput() (expense.CreateInput, error) {
-	var input expense.CreateInput
+// Возвращает: ports.CreateInput либо доменную ошибку или requestError invalid_date.
+func (request createExpenseRequest) toInput() (ports.CreateInput, error) {
+	var input ports.CreateInput
 	owner, err := domain.NewUserID(request.UserID)
 	if err != nil {
 		return input, err
@@ -95,7 +95,7 @@ func (request createExpenseRequest) toInput() (expense.CreateInput, error) {
 	if err != nil {
 		return input, err
 	}
-	return expense.CreateInput{Owner: owner, Amount: amount, Category: category, SpentOn: spentOn, Comment: comment}, nil
+	return ports.CreateInput{Owner: owner, Amount: amount, Category: category, SpentOn: spentOn, Comment: comment}, nil
 }
 
 // Принимает: ничего.

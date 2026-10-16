@@ -12,6 +12,7 @@ import (
 	"time"
 )
 
+// Адрес Bot API по умолчанию и сроки сетевых вызовов.
 const (
 	defaultBaseURL = "https://api.telegram.org"
 	// requestTimeout ограничивает короткие вызовы; long polling получает свой срок поверх интервала ожидания.

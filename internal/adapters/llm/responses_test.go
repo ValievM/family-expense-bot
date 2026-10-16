@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/ValievM/family-expense-bot/internal/adapters/llm"
-	"github.com/ValievM/family-expense-bot/internal/service/agent"
+	"github.com/ValievM/family-expense-bot/internal/ports"
 )
 
 // Принимает: w — писатель ответа; events — строки событий (JSON без префикса data).
@@ -44,14 +44,14 @@ func TestResponsesRequestShape(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := newResponsesTestClient(server.URL, "slug-1").Complete(context.Background(), agent.Request{
-		Messages: []agent.Message{
-			{Role: agent.RoleSystem, Content: "rules"},
-			{Role: agent.RoleUser, Content: "кофе 350"},
-			{Role: agent.RoleAssistant, ToolCalls: []agent.ToolCall{{ID: "c1", Name: "add_expense", Arguments: json.RawMessage(`{"amount":350}`)}}},
-			{Role: agent.RoleTool, ToolCallID: "c1", Content: `{"id":1}`},
+	_, err := newResponsesTestClient(server.URL, "slug-1").Complete(context.Background(), ports.Request{
+		Messages: []ports.Message{
+			{Role: ports.RoleSystem, Content: "rules"},
+			{Role: ports.RoleUser, Content: "кофе 350"},
+			{Role: ports.RoleAssistant, ToolCalls: []ports.ToolCall{{ID: "c1", Name: "add_expense", Arguments: json.RawMessage(`{"amount":350}`)}}},
+			{Role: ports.RoleTool, ToolCallID: "c1", Content: `{"id":1}`},
 		},
-		Tools: []agent.ToolSpec{{Name: "add_expense", Description: "adds", Parameters: json.RawMessage(`{"type":"object"}`)}},
+		Tools: []ports.ToolSpec{{Name: "add_expense", Description: "adds", Parameters: json.RawMessage(`{"type":"object"}`)}},
 	})
 	if err != nil {
 		t.Fatalf("Complete() error = %v", err)
@@ -93,7 +93,7 @@ func TestResponsesParsesTextAndToolCalls(t *testing.T) {
 	}))
 	defer server.Close()
 
-	reply, err := newResponsesTestClient(server.URL, "m").Complete(context.Background(), agent.Request{})
+	reply, err := newResponsesTestClient(server.URL, "m").Complete(context.Background(), ports.Request{})
 	if err != nil {
 		t.Fatalf("Complete() error = %v", err)
 	}
@@ -125,7 +125,7 @@ func TestResponsesPicksFirstListedModelOnce(t *testing.T) {
 	client := newResponsesTestClient(server.URL, "")
 
 	for range 2 {
-		if _, err := client.Complete(context.Background(), agent.Request{}); err != nil {
+		if _, err := client.Complete(context.Background(), ports.Request{}); err != nil {
 			t.Fatalf("Complete() error = %v", err)
 		}
 	}
@@ -159,7 +159,7 @@ func TestResponsesStreamFailuresAreReportedWithoutRetry(t *testing.T) {
 			}))
 			defer server.Close()
 
-			_, err := newResponsesTestClient(server.URL, "m").Complete(context.Background(), agent.Request{})
+			_, err := newResponsesTestClient(server.URL, "m").Complete(context.Background(), ports.Request{})
 
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("error = %v, want it to contain %q", err, tt.want)
@@ -196,7 +196,7 @@ func TestResponsesRetryPolicy(t *testing.T) {
 			}))
 			defer server.Close()
 
-			_, err := newResponsesTestClient(server.URL, "m").Complete(context.Background(), agent.Request{})
+			_, err := newResponsesTestClient(server.URL, "m").Complete(context.Background(), ports.Request{})
 
 			var apiErr *llm.APIError
 			if !errors.As(err, &apiErr) || apiErr.Status != tt.status {

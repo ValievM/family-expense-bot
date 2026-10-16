@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/ValievM/family-expense-bot/internal/domain"
+	"github.com/ValievM/family-expense-bot/internal/domain/domaintest"
+	"github.com/ValievM/family-expense-bot/internal/ports"
 	"github.com/ValievM/family-expense-bot/internal/service/expense"
 )
 
@@ -20,7 +22,8 @@ type fakeClock struct{ now time.Time }
 // Возвращает: время из теста.
 func (clock *fakeClock) Now() time.Time { return clock.now }
 
-// fakeRepository — хранилище расходов в памяти; считает вызовы записи.
+// fakeRepository — реализация ports.ExpenseRepository в памяти; считает вызовы записи.
+// ( расходов в памяти; считает вызовы записи.
 type fakeRepository struct {
 	records map[domain.ExpenseID]domain.Expense
 	nextID  domain.ExpenseID
@@ -47,11 +50,11 @@ func (repository *fakeRepository) Create(_ context.Context, item domain.Expense)
 
 // Принимает: _ — контекст не используется; id — идентификатор.
 // Делает: читает расход.
-// Возвращает: расход либо expense.ErrNotFound.
+// Возвращает: расход либо ports.ErrNotFound.
 func (repository *fakeRepository) Get(_ context.Context, id domain.ExpenseID) (domain.Expense, error) {
 	item, found := repository.records[id]
 	if !found {
-		return domain.Expense{}, expense.ErrNotFound
+		return domain.Expense{}, ports.ErrNotFound
 	}
 	return item, nil
 }
@@ -59,7 +62,7 @@ func (repository *fakeRepository) Get(_ context.Context, id domain.ExpenseID) (d
 // Принимает: _ — контекст не используется; filter — фильтры.
 // Делает: отбирает по владельцу, категории и включительному периоду и сортирует по дню и ID по убыванию.
 // Возвращает: расходы и nil.
-func (repository *fakeRepository) List(_ context.Context, filter expense.ListFilter) ([]domain.Expense, error) {
+func (repository *fakeRepository) List(_ context.Context, filter ports.ListFilter) ([]domain.Expense, error) {
 	items := make([]domain.Expense, 0, len(repository.records))
 	for _, item := range repository.records {
 		if filter.Owner != nil && item.Owner() != *filter.Owner {
@@ -103,10 +106,10 @@ func (repository *fakeRepository) ListUserIDs(_ context.Context) ([]domain.UserI
 
 // Принимает: _ — контекст не используется; item — расход с ID.
 // Делает: заменяет сохранённый расход.
-// Возвращает: новый расход либо expense.ErrNotFound.
+// Возвращает: новый расход либо ports.ErrNotFound.
 func (repository *fakeRepository) Update(_ context.Context, item domain.Expense) (domain.Expense, error) {
 	if _, found := repository.records[item.ID()]; !found {
-		return domain.Expense{}, expense.ErrNotFound
+		return domain.Expense{}, ports.ErrNotFound
 	}
 	repository.writes++
 	repository.records[item.ID()] = item
@@ -115,58 +118,31 @@ func (repository *fakeRepository) Update(_ context.Context, item domain.Expense)
 
 // Принимает: _ — контекст не используется; id — идентификатор.
 // Делает: удаляет расход.
-// Возвращает: nil либо expense.ErrNotFound.
+// Возвращает: nil либо ports.ErrNotFound.
 func (repository *fakeRepository) Delete(_ context.Context, id domain.ExpenseID) error {
 	if _, found := repository.records[id]; !found {
-		return expense.ErrNotFound
+		return ports.ErrNotFound
 	}
 	repository.writes++
 	delete(repository.records, id)
 	return nil
 }
 
-// Принимает: t — тестовый контекст; value — Telegram ID.
-// Делает: создаёт владельца через конструктор.
-// Возвращает: UserID.
-func user(t *testing.T, value int64) domain.UserID {
-	t.Helper()
-	id, err := domain.NewUserID(value)
-	if err != nil {
-		t.Fatalf("NewUserID(%d) error = %v", value, err)
-	}
-	return id
-}
-
-// Принимает: t — тестовый контекст; kopecks — сумма.
-// Делает: создаёт сумму через конструктор.
-// Возвращает: Money.
-func money(t *testing.T, kopecks int64) domain.Money {
-	t.Helper()
-	value, err := domain.NewMoney(kopecks)
-	if err != nil {
-		t.Fatalf("NewMoney(%d) error = %v", kopecks, err)
-	}
-	return value
-}
-
 // Принимает: t — тестовый контекст; value — день YYYY-MM-DD.
-// Делает: разбирает день через конструктор.
+// Делает: разбирает день через domaintest.Day.
 // Возвращает: указатель на Day.
-func day(t *testing.T, value string) *domain.Day {
+func dayPtr(t *testing.T, value string) *domain.Day {
 	t.Helper()
-	parsed, err := domain.ParseDay(value)
-	if err != nil {
-		t.Fatalf("ParseDay(%q) error = %v", value, err)
-	}
+	parsed := domaintest.Day(t, value)
 	return &parsed
 }
 
 // Принимает: t — тестовый контекст; owner — владелец; kopecks — сумма.
 // Делает: собирает корректный вход создания на 2 января 2026.
-// Возвращает: expense.CreateInput.
-func input(t *testing.T, owner int64, kopecks int64) expense.CreateInput {
+// Возвращает: ports.CreateInput.
+func input(t *testing.T, owner int64, kopecks int64) ports.CreateInput {
 	t.Helper()
-	return expense.CreateInput{Owner: user(t, owner), Amount: money(t, kopecks), Category: domain.CategoryFood, SpentOn: day(t, "2026-01-02")}
+	return ports.CreateInput{Owner: domaintest.UserID(t, owner), Amount: domaintest.Money(t, kopecks), Category: domain.CategoryFood, SpentOn: dayPtr(t, "2026-01-02")}
 }
 
 // Принимает: t — тестовый контекст; now — время часов.
@@ -223,12 +199,12 @@ func TestCreateDefaultsOmittedDayToTodayInConfiguredLocation(t *testing.T) {
 func TestCreateRejectsInvalidExpenseWithoutPersistence(t *testing.T) {
 	tests := []struct {
 		name   string
-		mutate func(*expense.CreateInput)
+		mutate func(*ports.CreateInput)
 		want   error
 	}{
-		{"zero amount", func(in *expense.CreateInput) { in.Amount = domain.Money{} }, domain.ErrInvalidAmount},
-		{"unknown category", func(in *expense.CreateInput) { in.Category = "pets" }, domain.ErrUnknownCategory},
-		{"missing owner", func(in *expense.CreateInput) { in.Owner = domain.UserID{} }, domain.ErrInvalidUser},
+		{"zero amount", func(in *ports.CreateInput) { in.Amount = domain.Money{} }, domain.ErrInvalidAmount},
+		{"unknown category", func(in *ports.CreateInput) { in.Category = "pets" }, domain.ErrUnknownCategory},
+		{"missing owner", func(in *ports.CreateInput) { in.Owner = domain.UserID{} }, domain.ErrInvalidUser},
 	}
 
 	for _, tt := range tests {
@@ -255,7 +231,7 @@ func TestUpdateMergesChangesAndStampsUpdateTime(t *testing.T) {
 	created, _ := service.Create(context.Background(), input(t, 7, 100))
 	later := now.Add(time.Hour)
 	service = expense.NewService(repository, &fakeClock{now: later}, time.UTC)
-	amount := money(t, 250)
+	amount := domaintest.Money(t, 250)
 	comment, _ := domain.NewComment("new comment")
 
 	updated, err := service.Update(context.Background(), created.ID(), domain.Changes{Amount: &amount, Comment: &comment})
@@ -296,16 +272,16 @@ func TestUpdateRejectsInvalidResultWithoutPersistence(t *testing.T) {
 func TestUserExpensesCannotReadOrChangeForeignExpenses(t *testing.T) {
 	service, repository := newService(t, now)
 	foreign, _ := service.Create(context.Background(), input(t, 8, 900))
-	scope := service.ForUser(user(t, 7))
-	amount := money(t, 1)
+	scope := service.ForUser(domaintest.UserID(t, 7))
+	amount := domaintest.Money(t, 1)
 
-	if _, err := scope.Get(context.Background(), foreign.ID()); !errors.Is(err, expense.ErrNotFound) {
+	if _, err := scope.Get(context.Background(), foreign.ID()); !errors.Is(err, ports.ErrNotFound) {
 		t.Errorf("Get() error = %v, want ErrNotFound", err)
 	}
-	if _, err := scope.Update(context.Background(), foreign.ID(), domain.Changes{Amount: &amount}); !errors.Is(err, expense.ErrNotFound) {
+	if _, err := scope.Update(context.Background(), foreign.ID(), domain.Changes{Amount: &amount}); !errors.Is(err, ports.ErrNotFound) {
 		t.Errorf("Update() error = %v, want ErrNotFound", err)
 	}
-	if err := scope.Delete(context.Background(), foreign.ID()); !errors.Is(err, expense.ErrNotFound) {
+	if err := scope.Delete(context.Background(), foreign.ID()); !errors.Is(err, ports.ErrNotFound) {
 		t.Errorf("Delete() error = %v, want ErrNotFound", err)
 	}
 	if got := repository.records[foreign.ID()]; got.Amount().Kopecks() != 900 {
@@ -319,19 +295,19 @@ func TestUserExpensesCannotReadOrChangeForeignExpenses(t *testing.T) {
 func TestUserExpensesCreateAndListBindOwner(t *testing.T) {
 	service, _ := newService(t, now)
 	_, _ = service.Create(context.Background(), input(t, 8, 900))
-	scope := service.ForUser(user(t, 7))
+	scope := service.ForUser(domaintest.UserID(t, 7))
 
-	created, err := scope.Create(context.Background(), expense.UserCreateInput{Amount: money(t, 100), Category: domain.CategoryHealth, SpentOn: day(t, "2026-01-02")})
+	created, err := scope.Create(context.Background(), ports.UserCreateInput{Amount: domaintest.Money(t, 100), Category: domain.CategoryHealth, SpentOn: dayPtr(t, "2026-01-02")})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
-	other := user(t, 8)
-	listed, err := scope.List(context.Background(), expense.ListFilter{Owner: &other})
+	other := domaintest.UserID(t, 8)
+	listed, err := scope.List(context.Background(), ports.ListFilter{Owner: &other})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
 
-	if created.Owner() != user(t, 7) {
+	if created.Owner() != domaintest.UserID(t, 7) {
 		t.Errorf("owner = %v, want 7", created.Owner())
 	}
 	if len(listed) != 1 || listed[0].ID() != created.ID() {
@@ -344,17 +320,17 @@ func TestUserExpensesCreateAndListBindOwner(t *testing.T) {
 // Возвращает: ничего.
 func TestUserExpensesUpdatePreservesOwnerAndCreationTime(t *testing.T) {
 	service, repository := newService(t, now)
-	scope := service.ForUser(user(t, 7))
-	created, _ := scope.Create(context.Background(), expense.UserCreateInput{Amount: money(t, 100), Category: domain.CategoryFood, SpentOn: day(t, "2026-01-02")})
+	scope := service.ForUser(domaintest.UserID(t, 7))
+	created, _ := scope.Create(context.Background(), ports.UserCreateInput{Amount: domaintest.Money(t, 100), Category: domain.CategoryFood, SpentOn: dayPtr(t, "2026-01-02")})
 	service = expense.NewService(repository, &fakeClock{now: now.Add(time.Hour)}, time.UTC)
 	category := domain.CategoryShopping
 
-	updated, err := service.ForUser(user(t, 7)).Update(context.Background(), created.ID(), domain.Changes{Category: &category})
+	updated, err := service.ForUser(domaintest.UserID(t, 7)).Update(context.Background(), created.ID(), domain.Changes{Category: &category})
 	if err != nil {
 		t.Fatalf("Update() error = %v", err)
 	}
 
-	if updated.Owner() != user(t, 7) || !updated.CreatedAt().Equal(now) || updated.Category() != domain.CategoryShopping {
+	if updated.Owner() != domaintest.UserID(t, 7) || !updated.CreatedAt().Equal(now) || updated.Category() != domain.CategoryShopping {
 		t.Errorf("updated = %+v", updated)
 	}
 }
@@ -366,10 +342,10 @@ func TestZeroScopeIsRejected(t *testing.T) {
 	service, _ := newService(t, now)
 	scope := service.ForUser(domain.UserID{})
 
-	if _, err := scope.List(context.Background(), expense.ListFilter{}); !errors.Is(err, domain.ErrInvalidUser) {
+	if _, err := scope.List(context.Background(), ports.ListFilter{}); !errors.Is(err, domain.ErrInvalidUser) {
 		t.Errorf("List() error = %v, want ErrInvalidUser", err)
 	}
-	if _, err := scope.Create(context.Background(), expense.UserCreateInput{Amount: money(t, 1), Category: domain.CategoryFood}); !errors.Is(err, domain.ErrInvalidUser) {
+	if _, err := scope.Create(context.Background(), ports.UserCreateInput{Amount: domaintest.Money(t, 1), Category: domain.CategoryFood}); !errors.Is(err, domain.ErrInvalidUser) {
 		t.Errorf("Create() error = %v, want ErrInvalidUser", err)
 	}
 }
@@ -381,18 +357,18 @@ func TestListFiltersByInclusivePeriodAndCategory(t *testing.T) {
 	service, _ := newService(t, now)
 	for _, date := range []string{"2026-01-01", "2026-01-02", "2026-01-03", "2026-01-04"} {
 		request := input(t, 7, 100)
-		request.SpentOn = day(t, date)
+		request.SpentOn = dayPtr(t, date)
 		if _, err := service.Create(context.Background(), request); err != nil {
 			t.Fatal(err)
 		}
 	}
 	other := input(t, 7, 100)
 	other.Category = domain.CategoryOther
-	other.SpentOn = day(t, "2026-01-02")
+	other.SpentOn = dayPtr(t, "2026-01-02")
 	_, _ = service.Create(context.Background(), other)
 	food := domain.CategoryFood
 
-	listed, err := service.List(context.Background(), expense.ListFilter{Category: &food, From: day(t, "2026-01-02"), To: day(t, "2026-01-03")})
+	listed, err := service.List(context.Background(), ports.ListFilter{Category: &food, From: dayPtr(t, "2026-01-02"), To: dayPtr(t, "2026-01-03")})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -409,10 +385,10 @@ func TestListRejectsInvalidFilters(t *testing.T) {
 	service, _ := newService(t, now)
 	unknown := domain.Category("pets")
 
-	if _, err := service.List(context.Background(), expense.ListFilter{From: day(t, "2026-01-03"), To: day(t, "2026-01-01")}); !errors.Is(err, expense.ErrInvalidPeriod) {
+	if _, err := service.List(context.Background(), ports.ListFilter{From: dayPtr(t, "2026-01-03"), To: dayPtr(t, "2026-01-01")}); !errors.Is(err, ports.ErrInvalidPeriod) {
 		t.Errorf("reversed period error = %v, want ErrInvalidPeriod", err)
 	}
-	if _, err := service.List(context.Background(), expense.ListFilter{Category: &unknown}); !errors.Is(err, domain.ErrUnknownCategory) {
+	if _, err := service.List(context.Background(), ports.ListFilter{Category: &unknown}); !errors.Is(err, domain.ErrUnknownCategory) {
 		t.Errorf("unknown category error = %v, want ErrUnknownCategory", err)
 	}
 }

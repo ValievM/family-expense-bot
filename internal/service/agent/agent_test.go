@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/ValievM/family-expense-bot/internal/domain"
+	"github.com/ValievM/family-expense-bot/internal/domain/domaintest"
+	"github.com/ValievM/family-expense-bot/internal/ports"
 	"github.com/ValievM/family-expense-bot/internal/service/agent"
 	"github.com/ValievM/family-expense-bot/internal/service/agent/tools"
 	"github.com/ValievM/family-expense-bot/internal/service/expense"
@@ -18,21 +20,21 @@ import (
 
 // scriptedLLM отдаёт заготовленные ответы по очереди и запоминает все запросы.
 type scriptedLLM struct {
-	replies  []agent.Message
-	requests []agent.Request
+	replies  []ports.Message
+	requests []ports.Request
 	err      error
 }
 
 // Принимает: _ — контекст не используется; request — очередной запрос агента.
 // Делает: сохраняет запрос и достаёт следующий заготовленный ответ.
 // Возвращает: ответ из очереди либо ошибку, заданную в тесте; когда очередь пуста, возвращает тестовую ошибку.
-func (llm *scriptedLLM) Complete(_ context.Context, request agent.Request) (agent.Message, error) {
+func (llm *scriptedLLM) Complete(_ context.Context, request ports.Request) (ports.Message, error) {
 	llm.requests = append(llm.requests, request)
 	if llm.err != nil {
-		return agent.Message{}, llm.err
+		return ports.Message{}, llm.err
 	}
 	if len(llm.replies) == 0 {
-		return agent.Message{}, errors.New("scripted LLM has no more replies")
+		return ports.Message{}, errors.New("scripted LLM has no more replies")
 	}
 	reply := llm.replies[0]
 	llm.replies = llm.replies[1:]
@@ -42,18 +44,18 @@ func (llm *scriptedLLM) Complete(_ context.Context, request agent.Request) (agen
 // Принимает: id — идентификатор вызова; name — имя инструмента; arguments — JSON аргументов.
 // Делает: собирает ответ модели с одним вызовом инструмента.
 // Возвращает: сообщение ассистента с ToolCalls.
-func toolCall(id, name, arguments string) agent.Message {
-	return agent.Message{Role: agent.RoleAssistant, ToolCalls: []agent.ToolCall{{ID: id, Name: name, Arguments: json.RawMessage(arguments)}}}
+func toolCall(id, name, arguments string) ports.Message {
+	return ports.Message{Role: ports.RoleAssistant, ToolCalls: []ports.ToolCall{{ID: id, Name: name, Arguments: json.RawMessage(arguments)}}}
 }
 
 // Принимает: content — текст финального ответа.
 // Делает: собирает финальный ответ модели без вызовов инструментов.
 // Возвращает: сообщение ассистента.
-func say(content string) agent.Message {
-	return agent.Message{Role: agent.RoleAssistant, Content: content}
+func say(content string) ports.Message {
+	return ports.Message{Role: ports.RoleAssistant, Content: content}
 }
 
-// memoryRepository — хранилище трат в памяти для тестов.
+// memoryRepository — хранилище трат в памяти для тестов; реализует ports.ExpenseRepository.
 type memoryRepository struct {
 	records map[domain.ExpenseID]domain.Expense
 	nextID  domain.ExpenseID
@@ -78,11 +80,11 @@ func (repository *memoryRepository) Create(_ context.Context, item domain.Expens
 
 // Принимает: _ — контекст не используется; id — идентификатор траты.
 // Делает: ищет трату по ID.
-// Возвращает: трату либо expense.ErrNotFound.
+// Возвращает: трату либо ports.ErrNotFound.
 func (repository *memoryRepository) Get(_ context.Context, id domain.ExpenseID) (domain.Expense, error) {
 	item, found := repository.records[id]
 	if !found {
-		return domain.Expense{}, expense.ErrNotFound
+		return domain.Expense{}, ports.ErrNotFound
 	}
 	return item, nil
 }
@@ -90,7 +92,7 @@ func (repository *memoryRepository) Get(_ context.Context, id domain.ExpenseID) 
 // Принимает: _ — контекст не используется; filter — фильтры списка.
 // Делает: отбирает траты по владельцу, категории и периоду и сортирует по дате и ID по убыванию.
 // Возвращает: список трат и nil.
-func (repository *memoryRepository) List(_ context.Context, filter expense.ListFilter) ([]domain.Expense, error) {
+func (repository *memoryRepository) List(_ context.Context, filter ports.ListFilter) ([]domain.Expense, error) {
 	items := make([]domain.Expense, 0, len(repository.records))
 	for _, item := range repository.records {
 		if filter.Owner != nil && item.Owner() != *filter.Owner {
@@ -134,10 +136,10 @@ func (repository *memoryRepository) ListUserIDs(_ context.Context) ([]domain.Use
 
 // Принимает: _ — контекст не используется; item — трата с ID.
 // Делает: заменяет сохранённую трату.
-// Возвращает: новую трату либо expense.ErrNotFound.
+// Возвращает: новую трату либо ports.ErrNotFound.
 func (repository *memoryRepository) Update(_ context.Context, item domain.Expense) (domain.Expense, error) {
 	if _, found := repository.records[item.ID()]; !found {
-		return domain.Expense{}, expense.ErrNotFound
+		return domain.Expense{}, ports.ErrNotFound
 	}
 	repository.records[item.ID()] = item
 	return item, nil
@@ -145,10 +147,10 @@ func (repository *memoryRepository) Update(_ context.Context, item domain.Expens
 
 // Принимает: _ — контекст не используется; id — идентификатор траты.
 // Делает: удаляет трату.
-// Возвращает: nil либо expense.ErrNotFound.
+// Возвращает: nil либо ports.ErrNotFound.
 func (repository *memoryRepository) Delete(_ context.Context, id domain.ExpenseID) error {
 	if _, found := repository.records[id]; !found {
-		return expense.ErrNotFound
+		return ports.ErrNotFound
 	}
 	delete(repository.records, id)
 	return nil
@@ -156,6 +158,13 @@ func (repository *memoryRepository) Delete(_ context.Context, id domain.ExpenseI
 
 // fixedClock всегда показывает одно и то же время.
 type fixedClock struct{ now time.Time }
+
+// Проверки на этапе компиляции: фейки реализуют порты.
+var (
+	_ ports.ExpenseRepository = (*memoryRepository)(nil)
+	_ ports.Clock             = fixedClock{}
+	_ ports.LLM               = (*scriptedLLM)(nil)
+)
 
 // Принимает: ничего.
 // Делает: отдаёт зафиксированное время.
@@ -173,16 +182,16 @@ type harness struct {
 // Принимает: t — тестовый контекст; replies — заготовленные ответы модели.
 // Делает: собирает агента на сервисе трат с памятью в хранилище и сегодняшним днём 16 октября 2026 (пятница) в Москве.
 // Возвращает: harness для сценария.
-func newHarness(t *testing.T, replies ...agent.Message) *harness {
+func newHarness(t *testing.T, replies ...ports.Message) *harness {
 	t.Helper()
 	moscow := time.FixedZone("MSK", 3*60*60)
 	now := time.Date(2026, time.October, 16, 12, 0, 0, 0, moscow)
 	repository := newMemoryRepository()
 	service := expense.NewService(repository, fixedClock{now: now}, moscow)
 	llm := &scriptedLLM{replies: replies}
-	scope := func(owner domain.UserID) agent.UserExpenses { return service.ForUser(owner) }
+	scope := func(owner domain.UserID) ports.UserExpenses { return service.ForUser(owner) }
 	return &harness{
-		agent:      agent.New(llm, scope, tools.Default(), agent.WithClock(fixedClock{now: now}), agent.WithLocation(moscow)),
+		agent:      agent.New(llm, scope, tools.Default(), fixedClock{now: now}, agent.WithLocation(moscow)),
 		llm:        llm,
 		repository: repository,
 		now:        now,
@@ -194,18 +203,9 @@ func newHarness(t *testing.T, replies ...agent.Message) *harness {
 // Возвращает: ничего.
 func (h *harness) seed(t *testing.T, userID int64, id domain.ExpenseID, amount int64, category domain.Category, date string) {
 	t.Helper()
-	owner, err := domain.NewUserID(userID)
-	if err != nil {
-		t.Fatalf("NewUserID() error = %v", err)
-	}
-	money, err := domain.NewMoney(amount)
-	if err != nil {
-		t.Fatalf("NewMoney() error = %v", err)
-	}
-	day, err := domain.ParseDay(date)
-	if err != nil {
-		t.Fatalf("ParseDay() error = %v", err)
-	}
+	owner := domaintest.UserID(t, userID)
+	money := domaintest.Money(t, amount)
+	day := domaintest.Day(t, date)
 	item, err := domain.Restore(domain.Snapshot{ID: id, Owner: owner, Amount: money, Category: category, SpentOn: day, CreatedAt: h.now, UpdatedAt: h.now})
 	if err != nil {
 		t.Fatalf("Restore() error = %v", err)
@@ -219,11 +219,11 @@ func (h *harness) seed(t *testing.T, userID int64, id domain.ExpenseID, amount i
 // Принимает: t — тестовый контекст; request — запрос агента к модели.
 // Делает: ищет в запросе сообщения роли tool.
 // Возвращает: содержимое всех tool-сообщений по порядку.
-func toolMessages(t *testing.T, request agent.Request) []string {
+func toolMessages(t *testing.T, request ports.Request) []string {
 	t.Helper()
 	var contents []string
 	for _, message := range request.Messages {
-		if message.Role == agent.RoleTool {
+		if message.Role == ports.RoleTool {
 			contents = append(contents, message.Content)
 		}
 	}
@@ -411,7 +411,7 @@ func TestRecoverableErrorsAreReturnedToModel(t *testing.T) {
 		toolCall("c1", "add_expense", `{"amount":-5,"category":"food"}`),
 		toolCall("c2", "add_expense", `{"amount":5,"category":"pets"}`),
 		toolCall("c3", "add_expense", `{"amount":5,"category":"food","date":"вчера"}`),
-		agent.Message{Role: agent.RoleAssistant, ToolCalls: []agent.ToolCall{
+		ports.Message{Role: ports.RoleAssistant, ToolCalls: []ports.ToolCall{
 			{ID: "c4", Name: "no_such_tool", Arguments: json.RawMessage(`{}`)},
 			{ID: "c5", Name: "add_expense", Arguments: json.RawMessage(`{"amount":5,"category":"food","comment":"` + strings.Repeat("я", 501) + `"}`)},
 		}},
@@ -437,7 +437,7 @@ func TestRecoverableErrorsAreReturnedToModel(t *testing.T) {
 // Делает: проверяет лимит шагов: бесконечные вызовы инструментов завершаются ErrStepLimit.
 // Возвращает: ничего.
 func TestHandleStopsAtStepLimit(t *testing.T) {
-	replies := make([]agent.Message, 0, 10)
+	replies := make([]ports.Message, 0, 10)
 	for range 10 {
 		replies = append(replies, toolCall("c", "list_expenses", `{}`))
 	}

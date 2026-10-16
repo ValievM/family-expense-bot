@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/ValievM/family-expense-bot/internal/service/agent"
+	"github.com/ValievM/family-expense-bot/internal/ports"
 )
 
 // responsesRequest — тело запроса к Responses API; store=false и stream=true обязательны для оплаты подпиской.
@@ -70,7 +70,7 @@ type streamError struct {
 // Принимает: model — slug модели; request — запрос агента.
 // Делает: переводит нейтральный разговор в элементы input Responses API: сообщения, вызовы функций и их результаты.
 // Возвращает: тело запроса.
-func newResponsesRequest(model string, request agent.Request) responsesRequest {
+func newResponsesRequest(model string, request ports.Request) responsesRequest {
 	wire := responsesRequest{Model: model, Input: make([]any, 0, len(request.Messages)), Store: false, Stream: true}
 	for _, message := range request.Messages {
 		wire.Input = append(wire.Input, toResponsesItems(message)...)
@@ -86,8 +86,8 @@ func newResponsesRequest(model string, request agent.Request) responsesRequest {
 // Принимает: message — сообщение разговора.
 // Делает: раскладывает его на элементы input: tool-сообщение становится function_call_output, вызовы ассистента становятся function_call.
 // Возвращает: один или несколько элементов input.
-func toResponsesItems(message agent.Message) []any {
-	if message.Role == agent.RoleTool {
+func toResponsesItems(message ports.Message) []any {
+	if message.Role == ports.RoleTool {
 		return []any{responsesFunctionOutput{Type: "function_call_output", CallID: message.ToolCallID, Output: message.Content}}
 	}
 	items := make([]any, 0, 1+len(message.ToolCalls))

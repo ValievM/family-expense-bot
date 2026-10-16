@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/ValievM/family-expense-bot/internal/service/agent"
+	"github.com/ValievM/family-expense-bot/internal/ports"
 )
 
 // ErrEmptyResponse — провайдер ответил успешно, но без единого choice.
@@ -55,7 +55,7 @@ type chatResponse struct {
 // Принимает: model — имя модели; request — запрос агента.
 // Делает: переводит запрос агента в формат chat completions; при наличии инструментов ставит tool_choice=auto.
 // Возвращает: chatRequest для отправки провайдеру.
-func newChatRequest(model string, request agent.Request) chatRequest {
+func newChatRequest(model string, request ports.Request) chatRequest {
 	wire := chatRequest{Model: model, Messages: make([]chatMessage, 0, len(request.Messages))}
 	for _, message := range request.Messages {
 		wire.Messages = append(wire.Messages, toChatMessage(message))
@@ -75,7 +75,7 @@ func newChatRequest(model string, request agent.Request) chatRequest {
 // Принимает: message — сообщение агента.
 // Делает: переводит сообщение в провайдерский формат; у ассистентского сообщения только с вызовами инструментов content остаётся null, как требуют многие провайдеры.
 // Возвращает: chatMessage.
-func toChatMessage(message agent.Message) chatMessage {
+func toChatMessage(message ports.Message) chatMessage {
 	wire := chatMessage{Role: string(message.Role), ToolCallID: message.ToolCallID}
 	// Assistant messages that only request tools carry null content, which several providers require.
 	if message.Content != "" || len(message.ToolCalls) == 0 {
@@ -94,18 +94,18 @@ func toChatMessage(message agent.Message) chatMessage {
 
 // Принимает: ничего.
 // Делает: берёт первый choice ответа и переводит его в сообщение ассистента вместе с вызовами инструментов.
-// Возвращает: agent.Message или ErrEmptyResponse, если choices пуст.
-func (response chatResponse) assistantMessage() (agent.Message, error) {
+// Возвращает: ports.Message или ErrEmptyResponse, если choices пуст.
+func (response chatResponse) assistantMessage() (ports.Message, error) {
 	if len(response.Choices) == 0 {
-		return agent.Message{}, ErrEmptyResponse
+		return ports.Message{}, ErrEmptyResponse
 	}
 	wire := response.Choices[0].Message
-	message := agent.Message{Role: agent.RoleAssistant}
+	message := ports.Message{Role: ports.RoleAssistant}
 	if wire.Content != nil {
 		message.Content = *wire.Content
 	}
 	for _, call := range wire.ToolCalls {
-		message.ToolCalls = append(message.ToolCalls, agent.ToolCall{
+		message.ToolCalls = append(message.ToolCalls, ports.ToolCall{
 			ID:        call.ID,
 			Name:      call.Function.Name,
 			Arguments: json.RawMessage(call.Function.Arguments),

@@ -2,48 +2,22 @@
 package httpapi
 
 import (
-	"context"
 	"log/slog"
 	"net/http"
 
-	"github.com/ValievM/family-expense-bot/internal/domain"
-	"github.com/ValievM/family-expense-bot/internal/service/expense"
+	"github.com/ValievM/family-expense-bot/internal/ports"
 )
-
-// ExpenseService — use case'ы, нужные панели; контракт объявляет потребитель (адаптер).
-type ExpenseService interface {
-	// Принимает: ctx — контекст запроса, input — данные нового расхода.
-	// Делает: создаёт расход; пустая дата означает «сегодня».
-	// Возвращает: сохранённый расход или ошибку.
-	Create(ctx context.Context, input expense.CreateInput) (domain.Expense, error)
-	// Принимает: ctx — контекст запроса, filter — фильтр списка.
-	// Делает: выбирает расходы по фильтру.
-	// Возвращает: список расходов или ошибку.
-	List(ctx context.Context, filter expense.ListFilter) ([]domain.Expense, error)
-	// Принимает: ctx — контекст запроса.
-	// Делает: выбирает идентификаторы пользователей.
-	// Возвращает: список идентификаторов или ошибку.
-	ListUserIDs(ctx context.Context) ([]domain.UserID, error)
-	// Принимает: ctx — контекст запроса, id — идентификатор расхода, changes — изменяемые поля.
-	// Делает: частично обновляет расход.
-	// Возвращает: обновлённый расход или ошибку (в том числе expense.ErrNotFound).
-	Update(ctx context.Context, id domain.ExpenseID, changes domain.Changes) (domain.Expense, error)
-	// Принимает: ctx — контекст запроса, id — идентификатор расхода.
-	// Делает: удаляет расход.
-	// Возвращает: nil при успехе или ошибку (в том числе expense.ErrNotFound).
-	Delete(ctx context.Context, id domain.ExpenseID) error
-}
 
 // Server переводит HTTP-запросы в use case'ы расходов.
 type Server struct {
-	expenses ExpenseService
+	expenses ports.ExpenseService
 	logger   *slog.Logger
 }
 
 // Принимает: expenses — сервис расходов, logger — логгер.
 // Делает: создаёт Server; nil logger заменяется на slog.Default().
 // Возвращает: указатель на Server.
-func NewServer(expenses ExpenseService, logger *slog.Logger) *Server {
+func NewServer(expenses ports.ExpenseService, logger *slog.Logger) *Server {
 	if logger == nil {
 		logger = slog.Default()
 	}

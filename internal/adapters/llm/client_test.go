@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/ValievM/family-expense-bot/internal/adapters/llm"
-	"github.com/ValievM/family-expense-bot/internal/service/agent"
+	"github.com/ValievM/family-expense-bot/internal/ports"
 )
 
 // Принимает: int — номер попытки (не используется).
@@ -40,9 +40,9 @@ func TestCompleteSendsToolsAndParsesToolCalls(t *testing.T) {
 	}))
 	defer server.Close()
 
-	reply, err := newTestClient(server.URL).Complete(context.Background(), agent.Request{
-		Messages: []agent.Message{{Role: agent.RoleSystem, Content: "rules"}, {Role: agent.RoleUser, Content: "кофе 350"}},
-		Tools:    []agent.ToolSpec{{Name: "add_expense", Description: "adds", Parameters: json.RawMessage(`{"type":"object"}`)}},
+	reply, err := newTestClient(server.URL).Complete(context.Background(), ports.Request{
+		Messages: []ports.Message{{Role: ports.RoleSystem, Content: "rules"}, {Role: ports.RoleUser, Content: "кофе 350"}},
+		Tools:    []ports.ToolSpec{{Name: "add_expense", Description: "adds", Parameters: json.RawMessage(`{"type":"object"}`)}},
 	})
 	if err != nil {
 		t.Fatalf("Complete() error = %v", err)
@@ -76,9 +76,9 @@ func TestCompleteEncodesToolResultAndAssistantToolCalls(t *testing.T) {
 	}))
 	defer server.Close()
 
-	reply, err := newTestClient(server.URL).Complete(context.Background(), agent.Request{Messages: []agent.Message{
-		{Role: agent.RoleAssistant, ToolCalls: []agent.ToolCall{{ID: "c1", Name: "list_expenses", Arguments: json.RawMessage(`{}`)}}},
-		{Role: agent.RoleTool, ToolCallID: "c1", Content: `[]`},
+	reply, err := newTestClient(server.URL).Complete(context.Background(), ports.Request{Messages: []ports.Message{
+		{Role: ports.RoleAssistant, ToolCalls: []ports.ToolCall{{ID: "c1", Name: "list_expenses", Arguments: json.RawMessage(`{}`)}}},
+		{Role: ports.RoleTool, ToolCallID: "c1", Content: `[]`},
 	}})
 	if err != nil {
 		t.Fatalf("Complete() error = %v", err)
@@ -109,7 +109,7 @@ func TestCompleteRetriesTransientFailures(t *testing.T) {
 	}))
 	defer server.Close()
 
-	reply, err := newTestClient(server.URL).Complete(context.Background(), agent.Request{})
+	reply, err := newTestClient(server.URL).Complete(context.Background(), ports.Request{})
 	if err != nil || reply.Content != "ok" || calls.Load() != 3 {
 		t.Errorf("reply = %+v, err = %v, calls = %d, want ok after 3 calls", reply, err, calls.Load())
 	}
@@ -126,7 +126,7 @@ func TestCompleteDoesNotRetryClientErrors(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := newTestClient(server.URL).Complete(context.Background(), agent.Request{})
+	_, err := newTestClient(server.URL).Complete(context.Background(), ports.Request{})
 
 	var apiErr *llm.APIError
 	if !errors.As(err, &apiErr) || apiErr.Status != http.StatusUnauthorized || calls.Load() != 1 {
@@ -143,7 +143,7 @@ func TestCompleteReportsEmptyChoices(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := newTestClient(server.URL).Complete(context.Background(), agent.Request{})
+	_, err := newTestClient(server.URL).Complete(context.Background(), ports.Request{})
 
 	if !errors.Is(err, llm.ErrEmptyResponse) {
 		t.Errorf("err = %v, want ErrEmptyResponse", err)
@@ -164,7 +164,7 @@ func TestCompleteStopsRetryingWhenContextIsCancelled(t *testing.T) {
 		return time.Hour
 	}))
 
-	_, err := client.Complete(ctx, agent.Request{})
+	_, err := client.Complete(ctx, ports.Request{})
 
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("err = %v, want context.Canceled", err)

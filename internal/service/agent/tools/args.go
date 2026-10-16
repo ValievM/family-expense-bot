@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/ValievM/family-expense-bot/internal/domain"
-	"github.com/ValievM/family-expense-bot/internal/service/agent"
+	"github.com/ValievM/family-expense-bot/internal/ports"
 )
 
 // Принимает: raw — JSON аргументов от модели; destination — указатель на структуру аргументов.
@@ -19,7 +19,7 @@ func decodeArguments(raw json.RawMessage, destination any) error {
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(destination); err != nil {
-		return agent.ArgumentError{Message: "invalid arguments: " + err.Error()}
+		return ports.ArgumentError{Message: "invalid arguments: " + err.Error()}
 	}
 	return nil
 }
@@ -33,7 +33,7 @@ func parseDateArgument(raw *string) (*domain.Day, error) {
 	}
 	parsed, err := domain.ParseDay(*raw)
 	if err != nil {
-		return nil, agent.ArgumentError{Message: fmt.Sprintf("date %q must use the YYYY-MM-DD format", *raw)}
+		return nil, ports.ArgumentError{Message: fmt.Sprintf("date %q must use the YYYY-MM-DD format", *raw)}
 	}
 	return &parsed, nil
 }

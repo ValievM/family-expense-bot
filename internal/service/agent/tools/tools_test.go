@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/ValievM/family-expense-bot/internal/domain"
-	"github.com/ValievM/family-expense-bot/internal/service/agent"
+	"github.com/ValievM/family-expense-bot/internal/domain/domaintest"
+	"github.com/ValievM/family-expense-bot/internal/ports"
 	"github.com/ValievM/family-expense-bot/internal/service/agent/tools"
-	"github.com/ValievM/family-expense-bot/internal/service/expense"
 )
 
 // stubExpenses — область трат с заготовленным списком; запоминает последний вызов Update.
@@ -25,32 +25,32 @@ type stubExpenses struct {
 // Принимает: _ — контекст не используется; _ — вход создания не используется.
 // Делает: ничего, эти тесты не создают траты.
 // Возвращает: пустой расход и nil.
-func (stub *stubExpenses) Create(context.Context, expense.UserCreateInput) (domain.Expense, error) {
+func (stub *stubExpenses) Create(context.Context, ports.UserCreateInput) (domain.Expense, error) {
 	return domain.Expense{}, nil
 }
 
 // Принимает: _ — контекст не используется; id — идентификатор.
 // Делает: ищет трату в заготовленном списке.
-// Возвращает: трату либо expense.ErrNotFound.
+// Возвращает: трату либо ports.ErrNotFound.
 func (stub *stubExpenses) Get(_ context.Context, id domain.ExpenseID) (domain.Expense, error) {
 	for _, item := range stub.items {
 		if item.ID() == id {
 			return item, nil
 		}
 	}
-	return domain.Expense{}, expense.ErrNotFound
+	return domain.Expense{}, ports.ErrNotFound
 }
 
 // Принимает: _ — контекст не используется; _ — фильтр не используется.
 // Делает: отдаёт весь заготовленный список.
 // Возвращает: список и nil.
-func (stub *stubExpenses) List(context.Context, expense.ListFilter) ([]domain.Expense, error) {
+func (stub *stubExpenses) List(context.Context, ports.ListFilter) ([]domain.Expense, error) {
 	return stub.items, nil
 }
 
 // Принимает: _ — контекст не используется; id — идентификатор; changes — изменения.
 // Делает: запоминает изменения.
-// Возвращает: найденную трату либо expense.ErrNotFound.
+// Возвращает: найденную трату либо ports.ErrNotFound.
 func (stub *stubExpenses) Update(ctx context.Context, id domain.ExpenseID, changes domain.Changes) (domain.Expense, error) {
 	stub.changes, stub.updated = changes, true
 	return stub.Get(ctx, id)
@@ -61,16 +61,17 @@ func (stub *stubExpenses) Update(ctx context.Context, id domain.ExpenseID, chang
 // Возвращает: nil.
 func (stub *stubExpenses) Delete(context.Context, domain.ExpenseID) error { return nil }
 
-var _ agent.UserExpenses = (*stubExpenses)(nil)
+// Проверка на этапе компиляции: заглушка реализует ports.UserExpenses.
+var _ ports.UserExpenses = (*stubExpenses)(nil)
 
 // Принимает: t — тестовый контекст; count — сколько трат создать.
 // Делает: создаёт траты по 1 рублю с возрастающими ID через конструкторы домена.
 // Возвращает: срез трат.
 func manyExpenses(t *testing.T, count int) []domain.Expense {
 	t.Helper()
-	owner, _ := domain.NewUserID(7)
-	amount, _ := domain.NewMoney(100)
-	spent, _ := domain.ParseDay("2026-10-16")
+	owner := domaintest.UserID(t, 7)
+	amount := domaintest.Money(t, 100)
+	spent := domaintest.Day(t, "2026-10-16")
 	items := make([]domain.Expense, 0, count)
 	for index := 1; index <= count; index++ {
 		item, err := domain.Restore(domain.Snapshot{
@@ -88,7 +89,7 @@ func manyExpenses(t *testing.T, count int) []domain.Expense {
 // Принимает: t — тестовый контекст; name — имя инструмента.
 // Делает: достаёт инструмент из стандартного набора.
 // Возвращает: инструмент.
-func tool(t *testing.T, name string) agent.Tool {
+func tool(t *testing.T, name string) ports.Tool {
 	t.Helper()
 	found, ok := tools.Default().Get(name)
 	if !ok {
@@ -132,7 +133,7 @@ func TestUpdateRequiresAtLeastOneField(t *testing.T) {
 
 	_, err := tool(t, "update_expense").Execute(context.Background(), stub, json.RawMessage(`{"id":1}`))
 
-	var argErr agent.ArgumentError
+	var argErr ports.ArgumentError
 	if !errors.As(err, &argErr) || !strings.Contains(argErr.Message, "nothing to update") || stub.updated {
 		t.Errorf("error = %v, updated = %v", err, stub.updated)
 	}

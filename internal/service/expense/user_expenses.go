@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/ValievM/family-expense-bot/internal/domain"
+	"github.com/ValievM/family-expense-bot/internal/ports"
 )
 
 // UserExpenses — область «только траты одного владельца»: ни один метод не принимает владельца аргументом.
@@ -15,11 +16,11 @@ type UserExpenses struct {
 // Принимает: ctx — контекст; input — данные создания без владельца.
 // Делает: создаёт расход, владельцем которого становится владелец области.
 // Возвращает: расход либо доменную ошибку или ошибку хранилища.
-func (user UserExpenses) Create(ctx context.Context, input UserCreateInput) (domain.Expense, error) {
+func (user UserExpenses) Create(ctx context.Context, input ports.UserCreateInput) (domain.Expense, error) {
 	if user.owner.IsZero() {
 		return domain.Expense{}, domain.ErrInvalidUser
 	}
-	return user.service.Create(ctx, CreateInput{
+	return user.service.Create(ctx, ports.CreateInput{
 		Owner: user.owner, Amount: input.Amount, Category: input.Category, SpentOn: input.SpentOn, Comment: input.Comment,
 	})
 }
@@ -37,7 +38,7 @@ func (user UserExpenses) Get(ctx context.Context, id domain.ExpenseID) (domain.E
 // Принимает: ctx — контекст; filter — фильтры; поле Owner игнорируется.
 // Делает: подставляет владельца области вместо любого заданного владельца и читает список.
 // Возвращает: расходы владельца либо ошибку.
-func (user UserExpenses) List(ctx context.Context, filter ListFilter) ([]domain.Expense, error) {
+func (user UserExpenses) List(ctx context.Context, filter ports.ListFilter) ([]domain.Expense, error) {
 	if user.owner.IsZero() {
 		return nil, domain.ErrInvalidUser
 	}

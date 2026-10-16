@@ -5,7 +5,7 @@ import (
 	"strconv"
 
 	"github.com/ValievM/family-expense-bot/internal/domain"
-	"github.com/ValievM/family-expense-bot/internal/service/expense"
+	"github.com/ValievM/family-expense-bot/internal/ports"
 )
 
 // Принимает: w — writer ответа, второй параметр (запрос) не используется.
@@ -130,11 +130,11 @@ func (server *Server) handleDeleteExpense(w http.ResponseWriter, r *http.Request
 }
 
 // Принимает: r — входящий запрос с query-параметрами user_id, category, from, to.
-// Делает: строит expense.ListFilter из непустых параметров через доменные конструкторы.
+// Делает: строит ports.ListFilter из непустых параметров через доменные конструкторы.
 // Возвращает: заполненный фильтр; requestError при нечисловом user_id, доменную ошибку при неверных user_id, category или дате.
-func parseListFilter(r *http.Request) (expense.ListFilter, error) {
+func parseListFilter(r *http.Request) (ports.ListFilter, error) {
 	query := r.URL.Query()
-	var filter expense.ListFilter
+	var filter ports.ListFilter
 
 	if raw := query.Get("user_id"); raw != "" {
 		value, err := strconv.ParseInt(raw, 10, 64)

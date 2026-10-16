@@ -1,3 +1,4 @@
+// Package expense — сценарии работы с расходами (слой приложения): создание, чтение, изменение, удаление и привязка к владельцу.
 package expense
 
 import (
@@ -6,22 +7,26 @@ import (
 	"time"
 
 	"github.com/ValievM/family-expense-bot/internal/domain"
+	"github.com/ValievM/family-expense-bot/internal/ports"
+)
+
+// Проверки на этапе компиляции: сервис реализует входящий порт панели, а область — входящий порт агента.
+var (
+	_ ports.ExpenseService = (*Service)(nil)
+	_ ports.UserExpenses   = UserExpenses{}
 )
 
 // Service координирует сценарии над агрегатом Expense; сами инварианты проверяет домен.
 type Service struct {
-	repository Repository
-	clock      Clock
+	repository ports.ExpenseRepository
+	clock      ports.Clock
 	location   *time.Location
 }
 
-// Принимает: repository — хранилище; clock — часы, nil означает системные; location — часовой пояс «сегодня», nil означает UTC.
+// Принимает: repository — хранилище; clock — часы (обязательны); location — часовой пояс «сегодня», nil означает UTC.
 // Делает: собирает сервис.
 // Возвращает: готовый *Service.
-func NewService(repository Repository, clock Clock, location *time.Location) *Service {
-	if clock == nil {
-		clock = systemClock{}
-	}
+func NewService(repository ports.ExpenseRepository, clock ports.Clock, location *time.Location) *Service {
 	if location == nil {
 		location = time.UTC
 	}
@@ -38,7 +43,7 @@ func (service *Service) ForUser(owner domain.UserID) UserExpenses {
 // Принимает: ctx — контекст; input — данные создания.
 // Делает: подставляет «сегодня» (в часовом поясе сервиса) вместо пустого дня, создаёт агрегат через конструктор и сохраняет его.
 // Возвращает: сохранённый расход либо доменную ошибку или ошибку хранилища.
-func (service *Service) Create(ctx context.Context, input CreateInput) (domain.Expense, error) {
+func (service *Service) Create(ctx context.Context, input ports.CreateInput) (domain.Expense, error) {
 	now := service.clock.Now().UTC()
 	// Пропущенный день означает «сегодня»; правило живёт здесь, чтобы REST и агент вели себя одинаково.
 	spentOn := domain.DayOf(now, service.location)
@@ -73,13 +78,13 @@ func (service *Service) Get(ctx context.Context, id domain.ExpenseID) (domain.Ex
 
 // Принимает: ctx — контекст; filter — фильтры.
 // Делает: проверяет период и категорию и читает список.
-// Возвращает: расходы либо ErrInvalidPeriod, ErrUnknownCategory или ошибку хранилища.
-func (service *Service) List(ctx context.Context, filter ListFilter) ([]domain.Expense, error) {
+// Возвращает: расходы либо ports.ErrInvalidPeriod, ErrUnknownCategory или ошибку хранилища.
+func (service *Service) List(ctx context.Context, filter ports.ListFilter) ([]domain.Expense, error) {
 	if filter.Category != nil && !filter.Category.IsValid() {
 		return nil, domain.ErrUnknownCategory
 	}
 	if filter.From != nil && filter.To != nil && filter.From.Compare(*filter.To) > 0 {
-		return nil, ErrInvalidPeriod
+		return nil, ports.ErrInvalidPeriod
 	}
 	expenses, err := service.repository.List(ctx, filter)
 	if err != nil {
@@ -129,7 +134,7 @@ func (service *Service) getOwned(ctx context.Context, owner domain.UserID, id do
 		return domain.Expense{}, err
 	}
 	if !expense.OwnedBy(owner) {
-		return domain.Expense{}, ErrNotFound
+		return domain.Expense{}, ports.ErrNotFound
 	}
 	return expense, nil
 }

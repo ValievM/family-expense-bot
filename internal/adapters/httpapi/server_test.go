@@ -13,13 +13,14 @@ import (
 
 	"github.com/ValievM/family-expense-bot/internal/adapters/httpapi"
 	"github.com/ValievM/family-expense-bot/internal/domain"
-	"github.com/ValievM/family-expense-bot/internal/service/expense"
+	"github.com/ValievM/family-expense-bot/internal/domain/domaintest"
+	"github.com/ValievM/family-expense-bot/internal/ports"
 )
 
 // stubService запоминает переданные адаптером аргументы и возвращает заготовленные результаты.
 type stubService struct {
-	created    expense.CreateInput
-	filter     expense.ListFilter
+	created    ports.CreateInput
+	filter     ports.ListFilter
 	patchedID  domain.ExpenseID
 	changes    domain.Changes
 	deletedID  domain.ExpenseID
@@ -33,19 +34,7 @@ type stubService struct {
 // Возвращает: domain.Expense.
 func makeExpense(t *testing.T, id int64, owner int64, kopecks int64, category domain.Category, day string) domain.Expense {
 	t.Helper()
-	ownerID, err := domain.NewUserID(owner)
-	if err != nil {
-		t.Fatal(err)
-	}
-	amount, err := domain.NewMoney(kopecks)
-	if err != nil {
-		t.Fatal(err)
-	}
-	spentOn, err := domain.ParseDay(day)
-	if err != nil {
-		t.Fatal(err)
-	}
-	item, err := domain.Restore(domain.Snapshot{ID: domain.ExpenseID(id), Owner: ownerID, Amount: amount, Category: category, SpentOn: spentOn})
+	item, err := domain.Restore(domain.Snapshot{ID: domain.ExpenseID(id), Owner: domaintest.UserID(t, owner), Amount: domaintest.Money(t, kopecks), Category: category, SpentOn: domaintest.Day(t, day)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +44,7 @@ func makeExpense(t *testing.T, id int64, owner int64, kopecks int64, category do
 // Принимает: второй параметр (контекст) не используется, input — данные создаваемого расхода.
 // Делает: сохраняет input в stub.created; для неположительной суммы возвращает ErrInvalidAmount, как сервис.
 // Возвращает: расход с ID 1 и фиксированным днём 2026-03-05, а также stub.err.
-func (stub *stubService) Create(_ context.Context, input expense.CreateInput) (domain.Expense, error) {
+func (stub *stubService) Create(_ context.Context, input ports.CreateInput) (domain.Expense, error) {
 	stub.created = input
 	if !input.Amount.IsPositive() {
 		return domain.Expense{}, domain.ErrInvalidAmount
@@ -71,7 +60,7 @@ func (stub *stubService) Create(_ context.Context, input expense.CreateInput) (d
 // Принимает: второй параметр (контекст) не используется, filter — фильтр списка.
 // Делает: сохраняет filter в stub.filter.
 // Возвращает: stub.listResult и stub.err.
-func (stub *stubService) List(_ context.Context, filter expense.ListFilter) ([]domain.Expense, error) {
+func (stub *stubService) List(_ context.Context, filter ports.ListFilter) ([]domain.Expense, error) {
 	stub.filter = filter
 	return stub.listResult, stub.err
 }
@@ -104,18 +93,6 @@ func (stub *stubService) Update(_ context.Context, id domain.ExpenseID, changes 
 func (stub *stubService) Delete(_ context.Context, id domain.ExpenseID) error {
 	stub.deletedID = id
 	return stub.err
-}
-
-// Принимает: t — тестовый контекст, value — число.
-// Делает: создаёт UserID, при ошибке валит тест.
-// Возвращает: domain.UserID.
-func mustUser(t *testing.T, value int64) domain.UserID {
-	t.Helper()
-	id, err := domain.NewUserID(value)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return id
 }
 
 // Принимает: t — тестовый контекст, stub — подставной сервис, method, target, body — метод, URL и тело запроса.
@@ -253,7 +230,7 @@ func TestDeleteExpense(t *testing.T) {
 // Делает: форму ответов /api/users и /api/categories.
 // Возвращает: ничего.
 func TestListUsersAndCategories(t *testing.T) {
-	users := do(t, &stubService{userIDs: []domain.UserID{mustUser(t, 1), mustUser(t, 2)}}, http.MethodGet, "/api/users", "")
+	users := do(t, &stubService{userIDs: []domain.UserID{domaintest.UserID(t, 1), domaintest.UserID(t, 2)}}, http.MethodGet, "/api/users", "")
 	if got := strings.TrimSpace(users.Body.String()); got != `{"items":[{"user_id":1},{"user_id":2}]}` {
 		t.Errorf("users body = %s", got)
 	}
@@ -279,9 +256,9 @@ func TestErrorMapping(t *testing.T) {
 	}{
 		{"domain validation", http.MethodPost, "/api/expenses", `{"user_id":1,"amount":0,"category":"food"}`, nil, 400, "invalid_amount"},
 		{"unknown category", http.MethodPost, "/api/expenses", `{"user_id":1,"amount":1,"category":"x"}`, domain.ErrUnknownCategory, 400, "unknown_category"},
-		{"not found on update", http.MethodPatch, "/api/expenses/5", `{"amount":1}`, expense.ErrNotFound, 404, "not_found"},
-		{"not found on delete", http.MethodDelete, "/api/expenses/5", "", expense.ErrNotFound, 404, "not_found"},
-		{"invalid period", http.MethodGet, "/api/expenses", "", expense.ErrInvalidPeriod, 400, "invalid_period"},
+		{"not found on update", http.MethodPatch, "/api/expenses/5", `{"amount":1}`, ports.ErrNotFound, 404, "not_found"},
+		{"not found on delete", http.MethodDelete, "/api/expenses/5", "", ports.ErrNotFound, 404, "not_found"},
+		{"invalid period", http.MethodGet, "/api/expenses", "", ports.ErrInvalidPeriod, 400, "invalid_period"},
 		{"unexpected failure hides details", http.MethodGet, "/api/users", "", io.ErrUnexpectedEOF, 500, "internal"},
 		{"malformed json", http.MethodPost, "/api/expenses", `{"user_id":`, nil, 400, "invalid_json"},
 		{"unknown json field", http.MethodPost, "/api/expenses", `{"user_id":1,"amount":1,"category":"food","owner":2}`, nil, 400, "invalid_json"},

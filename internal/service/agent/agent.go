@@ -1,3 +1,4 @@
+// Package agent — ядро ИИ-агента учёта расходов: цикл «модель → инструменты → модель», память диалога и системный промпт.
 package agent
 
 import (
@@ -9,82 +10,40 @@ import (
 	"time"
 
 	"github.com/ValievM/family-expense-bot/internal/domain"
+	"github.com/ValievM/family-expense-bot/internal/ports"
 )
 
 const (
-	defaultMaxSteps = 5
-	emptyReply      = "Не удалось сформулировать ответ, попробуйте переформулировать запрос."
+	maxSteps   = 5
+	emptyReply = "Не удалось сформулировать ответ, попробуйте переформулировать запрос."
 )
 
 // ErrStepLimit сообщает, что модель не дала финальный ответ за допустимое число вызовов инструментов.
 var ErrStepLimit = errors.New("agent exceeded the tool-call step limit")
 
 // ScopeFactory выдаёт траты, жёстко привязанные к одному Telegram-пользователю; владелец берётся только из кода.
-type ScopeFactory func(owner domain.UserID) UserExpenses
-
-// Clock отдаёт текущее время, чтобы промпт и тесты были детерминированными.
-type Clock interface {
-	// Принимает: ничего.
-	// Делает: читает текущее время.
-	// Возвращает: момент времени.
-	Now() time.Time
-}
-
-// systemClock — Clock на системных часах.
-type systemClock struct{}
-
-// Принимает: ничего.
-// Делает: читает системные часы.
-// Возвращает: текущее время.
-func (systemClock) Now() time.Time {
-	return time.Now()
-}
+type ScopeFactory func(owner domain.UserID) ports.UserExpenses
 
 // Agent превращает свободный текст пользователя в вызовы инструментов учёта и короткий ответ.
 type Agent struct {
-	llm      LLM
+	llm      ports.LLM
 	scope    ScopeFactory
 	tools    *ToolSet
-	history  History
-	clock    Clock
+	history  ports.History
+	clock    ports.Clock
 	location *time.Location
-	maxSteps int
+	maxSteps int // лимит раундов с инструментами за одно сообщение
 	logger   *slog.Logger
 }
 
 // Option настраивает Agent при создании.
 type Option func(*Agent)
 
-// Принимает: clock — источник времени.
-// Делает: подменяет часы агента.
-// Возвращает: Option.
-func WithClock(clock Clock) Option {
-	return func(agent *Agent) { agent.clock = clock }
-}
-
 // Принимает: location — часовой пояс календаря пользователей.
 // Делает: задаёт часовой пояс, в котором считаются «сегодня» и «вчера» в промпте.
 // Возвращает: Option.
 func WithLocation(location *time.Location) Option {
 	return func(agent *Agent) { agent.location = location }
-}
-
-// Принимает: history — хранилище памяти диалога.
-// Делает: заменяет хранилище истории.
-// Возвращает: Option.
-func WithHistory(history History) Option {
-	return func(agent *Agent) { agent.history = history }
-}
-
-// Принимает: steps — максимум раундов с вызовом инструментов за одно сообщение.
-// Делает: меняет лимит шагов, если значение положительное.
-// Возвращает: Option.
-func WithMaxSteps(steps int) Option {
-	return func(agent *Agent) {
-		if steps > 0 {
-			agent.maxSteps = steps
-		}
-	}
 }
 
 // Принимает: logger — логгер агента.
@@ -94,18 +53,18 @@ func WithLogger(logger *slog.Logger) Option {
 	return func(agent *Agent) { agent.logger = logger }
 }
 
-// Принимает: llm — провайдер модели; scope — фабрика трат по владельцу; tools — набор инструментов (внедряется снаружи, чтобы ядро не зависело от них); options — необязательные настройки.
+// Принимает: llm — провайдер модели; scope — фабрика трат по владельцу; tools — набор инструментов; clock — источник времени для промпта; options — необязательные настройки.
 // Делает: собирает агента с UTC, памятью на 8 сообщений и лимитом в 5 шагов.
 // Возвращает: готового агента.
-func New(llm LLM, scope ScopeFactory, tools *ToolSet, options ...Option) *Agent {
+func New(llm ports.LLM, scope ScopeFactory, tools *ToolSet, clock ports.Clock, options ...Option) *Agent {
 	agent := &Agent{
 		llm:      llm,
 		scope:    scope,
 		tools:    tools,
-		clock:    systemClock{},
+		clock:    clock,
 		location: time.UTC,
 		history:  NewMemoryHistory(0),
-		maxSteps: defaultMaxSteps,
+		maxSteps: maxSteps,
 		logger:   slog.Default(),
 	}
 	for _, option := range options {
@@ -123,14 +82,14 @@ func (agent *Agent) Handle(ctx context.Context, userID int64, text string) (stri
 		return "", fmt.Errorf("identify message author: %w", err)
 	}
 	expenses := agent.scope(owner)
-	userMessage := Message{Role: RoleUser, Content: text}
+	userMessage := ports.Message{Role: ports.RoleUser, Content: text}
 
-	messages := []Message{{Role: RoleSystem, Content: buildSystemPrompt(agent.clock.Now(), agent.location)}}
+	messages := []ports.Message{{Role: ports.RoleSystem, Content: buildSystemPrompt(agent.clock.Now(), agent.location)}}
 	messages = append(messages, agent.history.Recent(userID)...)
 	messages = append(messages, userMessage)
 
 	for range agent.maxSteps {
-		reply, err := agent.llm.Complete(ctx, Request{Messages: messages, Tools: agent.tools.Specs()})
+		reply, err := agent.llm.Complete(ctx, ports.Request{Messages: messages, Tools: agent.tools.Specs()})
 		if err != nil {
 			return "", fmt.Errorf("complete conversation: %w", err)
 		}
@@ -144,7 +103,7 @@ func (agent *Agent) Handle(ctx context.Context, userID int64, text string) (stri
 			if err != nil {
 				return "", err
 			}
-			messages = append(messages, Message{Role: RoleTool, ToolCallID: call.ID, Content: result})
+			messages = append(messages, ports.Message{Role: ports.RoleTool, ToolCallID: call.ID, Content: result})
 		}
 	}
 	return "", ErrStepLimit
@@ -153,18 +112,18 @@ func (agent *Agent) Handle(ctx context.Context, userID int64, text string) (stri
 // Принимает: userID — владелец диалога; userMessage — исходное сообщение; answer — ответ модели.
 // Делает: подставляет запасной текст на пустой ответ и сохраняет пару «вопрос — ответ» в истории.
 // Возвращает: текст ответа пользователю.
-func (agent *Agent) finish(userID int64, userMessage Message, answer string) string {
+func (agent *Agent) finish(userID int64, userMessage ports.Message, answer string) string {
 	if answer == "" {
 		answer = emptyReply
 	}
-	agent.history.Remember(userID, userMessage, Message{Role: RoleAssistant, Content: answer})
+	agent.history.Remember(userID, userMessage, ports.Message{Role: ports.RoleAssistant, Content: answer})
 	return answer
 }
 
 // Принимает: ctx — контекст запроса; userID — владелец, нужен только для логов; expenses — траты владельца; call — вызов от модели.
 // Делает: находит инструмент и выполняет его; ошибки, которые модель может исправить, превращает в ответ-инструкцию.
 // Возвращает: JSON-строку для модели либо ошибку, если сбой не связан с аргументами модели.
-func (agent *Agent) runTool(ctx context.Context, userID int64, expenses UserExpenses, call ToolCall) (string, error) {
+func (agent *Agent) runTool(ctx context.Context, userID int64, expenses ports.UserExpenses, call ports.ToolCall) (string, error) {
 	tool, found := agent.tools.Get(call.Name)
 	if !found {
 		return errorResult(fmt.Errorf("unknown tool %q", call.Name)), nil

@@ -8,12 +8,13 @@ import (
 	"time"
 
 	"github.com/ValievM/family-expense-bot/internal/domain"
-	"github.com/ValievM/family-expense-bot/internal/service/expense"
+	"github.com/ValievM/family-expense-bot/internal/ports"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// expenseColumns — список колонок таблицы expenses в порядке, который читает scanExpense.
 const expenseColumns = "id, user_id, amount, category, spent_at, comment, created_at, updated_at"
 
 // Repository — хранение расходов в PostgreSQL через pgx.
@@ -21,7 +22,8 @@ type Repository struct {
 	pool *pgxpool.Pool
 }
 
-var _ expense.Repository = (*Repository)(nil)
+// Проверка на этапе компиляции, что Repository реализует порт ExpenseRepository.
+var _ ports.ExpenseRepository = (*Repository)(nil)
 
 // Принимает: pool — пул соединений.
 // Делает: привязывает пул; дни хранятся типом DATE без часового пояса, поэтому пояс не нужен.
@@ -54,7 +56,7 @@ func (repository *Repository) Create(ctx context.Context, item domain.Expense) (
 
 // Принимает: ctx — контекст запроса; id — идентификатор расхода.
 // Делает: читает расход по ID.
-// Возвращает: расход или expense.ErrNotFound, если записи нет.
+// Возвращает: расход или ports.ErrNotFound, если записи нет.
 func (repository *Repository) Get(ctx context.Context, id domain.ExpenseID) (domain.Expense, error) {
 	item, err := scanExpense(repository.pool.QueryRow(ctx,
 		"SELECT "+expenseColumns+" FROM expenses WHERE id = $1", int64(id)))
@@ -67,7 +69,7 @@ func (repository *Repository) Get(ctx context.Context, id domain.ExpenseID) (dom
 // Принимает: ctx — контекст запроса; filter — необязательные условия по владельцу, категории и дням.
 // Делает: выбирает расходы, применяя заданные условия (дни включительно), и сортирует по дню трат по убыванию, затем по ID.
 // Возвращает: срез расходов (пустой, не nil) или ошибку БД.
-func (repository *Repository) List(ctx context.Context, filter expense.ListFilter) ([]domain.Expense, error) {
+func (repository *Repository) List(ctx context.Context, filter ports.ListFilter) ([]domain.Expense, error) {
 	var owner, category, from, to any
 	if filter.Owner != nil {
 		owner = filter.Owner.Int64()
@@ -137,7 +139,7 @@ func (repository *Repository) ListUserIDs(ctx context.Context) ([]domain.UserID,
 
 // Принимает: ctx — контекст запроса; item — расход с ID и новыми значениями.
 // Делает: обновляет только изменяемые поля (сумма, категория, день, комментарий, updated_at); владелец и created_at не меняются.
-// Возвращает: сохранённый расход или expense.ErrNotFound, если записи нет.
+// Возвращает: сохранённый расход или ports.ErrNotFound, если записи нет.
 func (repository *Repository) Update(ctx context.Context, item domain.Expense) (domain.Expense, error) {
 	query := `UPDATE expenses
 		SET amount = $2, category = $3, spent_at = $4, comment = $5, updated_at = $6
@@ -159,26 +161,25 @@ func (repository *Repository) Update(ctx context.Context, item domain.Expense) (
 
 // Принимает: ctx — контекст запроса; id — идентификатор расхода.
 // Делает: удаляет расход по ID.
-// Возвращает: nil при успехе, expense.ErrNotFound если ничего не удалено, либо ошибку БД.
+// Возвращает: nil при успехе, ports.ErrNotFound если ничего не удалено, либо ошибку БД.
 func (repository *Repository) Delete(ctx context.Context, id domain.ExpenseID) error {
 	result, err := repository.pool.Exec(ctx, "DELETE FROM expenses WHERE id = $1", int64(id))
 	if err != nil {
 		return fmt.Errorf("delete expense %d: %w", id, err)
 	}
 	if result.RowsAffected() == 0 {
-		return fmt.Errorf("delete expense %d: %w", id, expense.ErrNotFound)
+		return fmt.Errorf("delete expense %d: %w", id, ports.ErrNotFound)
 	}
 	return nil
 }
 
-// rowScanner — общий интерфейс Scan для pgx.Row и pgx.Rows.
 type rowScanner interface {
 	Scan(dest ...any) error
 }
 
 // Принимает: row — строка результата запроса.
 // Делает: считывает колонки, собирает domain.Snapshot из значений-объектов и восстанавливает агрегат; бесконечные и пустые даты отвергаются.
-// Возвращает: расход, expense.ErrNotFound при отсутствии строки либо ошибку чтения или повреждённой записи (не ErrNotFound).
+// Возвращает: расход, ports.ErrNotFound при отсутствии строки либо ошибку чтения или повреждённой записи (не ErrNotFound).
 func scanExpense(row rowScanner) (domain.Expense, error) {
 	var (
 		id, userID, amount int64
@@ -189,7 +190,7 @@ func scanExpense(row rowScanner) (domain.Expense, error) {
 	)
 	if err := row.Scan(&id, &userID, &amount, &category, &spentOn, &comment, &createdAt, &updatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.Expense{}, expense.ErrNotFound
+			return domain.Expense{}, ports.ErrNotFound
 		}
 		return domain.Expense{}, fmt.Errorf("scan expense: %w", err)
 	}

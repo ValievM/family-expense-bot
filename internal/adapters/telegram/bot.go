@@ -7,8 +7,11 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	"github.com/ValievM/family-expense-bot/internal/ports"
 )
 
+// Таймауты, лимиты и тексты ответов бота.
 const (
 	pollTimeoutSeconds = 30
 	retryDelay         = 3 * time.Second
@@ -21,43 +24,17 @@ const (
 	privateOnlyMsg = "Я работаю только в личных сообщениях."
 )
 
-// Gateway — часть Bot API, нужная боту; интерфейс объявлен у потребителя, чтобы бота можно было тестировать без сети.
 type Gateway interface {
-	// Принимает: ctx — контекст остановки; offset — ID первого нужного обновления; timeoutSeconds — срок long polling.
-	// Делает: получает новые обновления.
-	// Возвращает: обновления либо ошибку.
 	GetUpdates(ctx context.Context, offset int64, timeoutSeconds int) ([]Update, error)
-	// Принимает: ctx — контекст запроса; chatID — получатель; text — текст.
-	// Делает: отправляет сообщение.
-	// Возвращает: nil либо ошибку.
 	SendMessage(ctx context.Context, chatID int64, text string) error
-	// Принимает: ctx — контекст запроса; chatID — получатель.
-	// Делает: показывает индикатор набора текста.
-	// Возвращает: nil либо ошибку.
 	SendTyping(ctx context.Context, chatID int64) error
-}
-
-// Responder превращает текст пользователя в ответ; ему передаётся только доверенный ID автора из Telegram.
-type Responder interface {
-	// Принимает: ctx — контекст запроса; userID — Telegram ID автора; text — текст сообщения.
-	// Делает: обрабатывает запрос пользователя.
-	// Возвращает: ответ для пользователя либо ошибку.
-	Handle(ctx context.Context, userID int64, text string) (string, error)
-}
-
-// AccessPolicy решает, можно ли пользователю общаться с ботом.
-type AccessPolicy interface {
-	// Принимает: userID — Telegram ID автора.
-	// Делает: проверяет доступ.
-	// Возвращает: true, если доступ разрешён.
-	IsUserAllowed(userID int64) bool
 }
 
 // Bot читает обновления, ограничивает доступ и отвечает; сообщения одного пользователя обрабатываются строго в порядке получения.
 type Bot struct {
 	gateway   Gateway
-	responder Responder
-	access    AccessPolicy
+	responder ports.Responder
+	access    ports.AccessPolicy
 	logger    *slog.Logger
 	retry     time.Duration
 	queues    sync.Map // userID -> *userQueue
@@ -90,7 +67,7 @@ func WithRetryDelay(delay time.Duration) BotOption {
 // Принимает: gateway — доступ к Telegram; responder — обработчик текста; access — политика доступа; options — настройки.
 // Делает: собирает бота.
 // Возвращает: готового Bot.
-func NewBot(gateway Gateway, responder Responder, access AccessPolicy, options ...BotOption) *Bot {
+func NewBot(gateway Gateway, responder ports.Responder, access ports.AccessPolicy, options ...BotOption) *Bot {
 	bot := &Bot{gateway: gateway, responder: responder, access: access, logger: slog.Default(), retry: retryDelay}
 	for _, option := range options {
 		option(bot)

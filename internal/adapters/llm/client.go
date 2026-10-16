@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ValievM/family-expense-bot/internal/service/agent"
+	"github.com/ValievM/family-expense-bot/internal/ports"
 )
 
 const (
@@ -43,17 +43,11 @@ type Client struct {
 	backoff    func(attempt int) time.Duration
 }
 
-var _ agent.LLM = (*Client)(nil)
+// Проверка на этапе компиляции: Client реализует порт LLM.
+var _ ports.LLM = (*Client)(nil)
 
 // Option — настройка Client.
 type Option func(*Client)
-
-// Принимает: httpClient — HTTP-клиент для запросов.
-// Делает: создаёт опцию, заменяющую HTTP-клиент по умолчанию.
-// Возвращает: Option, применяемая в NewClient.
-func WithHTTPClient(httpClient *http.Client) Option {
-	return func(client *Client) { client.httpClient = httpClient }
-}
 
 // Принимает: backoff — функция задержки перед повторной попыткой по её номеру.
 // Делает: создаёт опцию, переопределяющую паузу между повторами; тесты используют её, чтобы не ждать.
@@ -82,58 +76,44 @@ func NewClient(baseURL, model string, authorizer Authorizer, options ...Option) 
 // Принимает: ctx — контекст запроса; request — сообщения и описания инструментов.
 // Делает: отправляет диалог провайдеру и повторяет запрос (до maxRetries раз) при 429 и 5xx с паузой между попытками.
 // Возвращает: ответ ассистента или последнюю ошибку; ошибку контекста, если ожидание прервано отменой.
-func (client *Client) Complete(ctx context.Context, request agent.Request) (agent.Message, error) {
+func (client *Client) Complete(ctx context.Context, request ports.Request) (ports.Message, error) {
 	payload, err := json.Marshal(newChatRequest(client.model, request))
 	if err != nil {
-		return agent.Message{}, fmt.Errorf("encode llm request: %w", err)
+		return ports.Message{}, fmt.Errorf("encode llm request: %w", err)
 	}
 
-	var lastErr error
-	for attempt := 0; attempt <= maxRetries; attempt++ {
-		if attempt > 0 {
-			if err := sleep(ctx, client.backoff(attempt)); err != nil {
-				return agent.Message{}, err
-			}
-		}
-		reply, err := client.send(ctx, payload)
-		if err == nil {
-			return reply, nil
-		}
-		lastErr = err
-		if !retryable(err) {
-			break
-		}
-	}
-	return agent.Message{}, lastErr
+	return withRetries(ctx, client.backoff, retryable, func() (ports.Message, error) {
+		return client.send(ctx, payload)
+	})
 }
 
 // Принимает: ctx — контекст запроса; payload — JSON тела запроса.
 // Делает: выполняет один POST на /chat/completions с авторизацией и разбирает ответ; при статусе не 200 читает до maxErrorBody байт тела.
 // Возвращает: сообщение ассистента, *APIError при неуспешном статусе или ошибку сборки, вызова и разбора.
-func (client *Client) send(ctx context.Context, payload []byte) (agent.Message, error) {
+func (client *Client) send(ctx context.Context, payload []byte) (ports.Message, error) {
 	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, client.baseURL+"/chat/completions", bytes.NewReader(payload))
 	if err != nil {
-		return agent.Message{}, fmt.Errorf("build llm request: %w", err)
+		return ports.Message{}, fmt.Errorf("build llm request: %w", err)
 	}
 	httpRequest.Header.Set("Content-Type", "application/json")
 	if err := client.authorizer.Authorize(ctx, httpRequest); err != nil {
-		return agent.Message{}, fmt.Errorf("authorize llm request: %w", err)
+		return ports.Message{}, fmt.Errorf("authorize llm request: %w", err)
 	}
 
 	response, err := client.httpClient.Do(httpRequest)
 	if err != nil {
-		return agent.Message{}, fmt.Errorf("call llm provider: %w", err)
+		return ports.Message{}, fmt.Errorf("call llm provider: %w", err)
 	}
 	defer func() { _ = response.Body.Close() }()
 
 	if response.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(response.Body, maxErrorBody))
-		return agent.Message{}, &APIError{Status: response.StatusCode, Message: strings.TrimSpace(string(body))}
+		return ports.Message{}, &APIError{Status: response.StatusCode, Message: strings.TrimSpace(string(body))}
 	}
 
 	var decoded chatResponse
 	if err := json.NewDecoder(response.Body).Decode(&decoded); err != nil {
-		return agent.Message{}, fmt.Errorf("decode llm response: %w", err)
+		return ports.Message{}, fmt.Errorf("decode llm response: %w", err)
 	}
 	return decoded.assistantMessage()
 }

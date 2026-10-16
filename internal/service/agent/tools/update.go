@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 
 	"github.com/ValievM/family-expense-bot/internal/domain"
-	"github.com/ValievM/family-expense-bot/internal/service/agent"
+	"github.com/ValievM/family-expense-bot/internal/ports"
 )
 
 // updateExpenseTool частично меняет трату владельца сообщения.
 type updateExpenseTool struct{}
 
-// updateExpenseArguments — аргументы update_expense; владельца задаёт только scope.
+// updateExpenseArguments — аргументы update_expense; владельца задаёт только область UserExpenses.
 type updateExpenseArguments struct {
 	ID       int64    `json:"id"`
 	Amount   *float64 `json:"amount"`
@@ -23,8 +23,8 @@ type updateExpenseArguments struct {
 // Принимает: ничего.
 // Делает: описывает инструмент update_expense: id и любые изменяемые поля.
 // Возвращает: ToolSpec с обязательным id.
-func (tool updateExpenseTool) Spec() agent.ToolSpec {
-	return agent.ToolSpec{
+func (tool updateExpenseTool) Spec() ports.ToolSpec {
+	return ports.ToolSpec{
 		Name:        "update_expense",
 		Description: "Изменить трату пользователя по id. Передавай только изменяемые поля. id берётся из list_expenses.",
 		Parameters: objectSchema(map[string]any{
@@ -40,13 +40,13 @@ func (tool updateExpenseTool) Spec() agent.ToolSpec {
 // Принимает: ctx — контекст запроса; expenses — траты владельца сообщения; arguments — JSON от модели.
 // Делает: собирает частичное изменение и применяет его, только если трата принадлежит владельцу.
 // Возвращает: обновлённую трату в виде expenseView либо ошибку аргументов, валидации или «не найдено».
-func (tool updateExpenseTool) Execute(ctx context.Context, expenses agent.UserExpenses, arguments json.RawMessage) (any, error) {
+func (tool updateExpenseTool) Execute(ctx context.Context, expenses ports.UserExpenses, arguments json.RawMessage) (any, error) {
 	var args updateExpenseArguments
 	if err := decodeArguments(arguments, &args); err != nil {
 		return nil, err
 	}
 	if args.ID <= 0 {
-		return nil, agent.ArgumentError{Message: "id must be a positive integer"}
+		return nil, ports.ArgumentError{Message: "id must be a positive integer"}
 	}
 	changes, err := tool.buildChanges(args)
 	if err != nil {
@@ -93,7 +93,7 @@ func (tool updateExpenseTool) buildChanges(args updateExpenseArguments) (domain.
 	}
 
 	if changes.Amount == nil && changes.Category == nil && changes.SpentOn == nil && changes.Comment == nil {
-		return changes, agent.ArgumentError{Message: "nothing to update: pass at least one of amount, category, date, comment"}
+		return changes, ports.ArgumentError{Message: "nothing to update: pass at least one of amount, category, date, comment"}
 	}
 	return changes, nil
 }
