@@ -105,6 +105,19 @@ func (bot *Bot) wait(ctx context.Context, delay time.Duration) {
 // Принимает: ctx; message — входящее сообщение.
 // Делает: отбрасывает чужие типы, проверяет доступ, вызывает обработчик, отправляет ответ.
 // Возвращает: ничего; сбои пишутся в лог, пользователь получает нейтральный ответ.
+// Принимает: ctx — контекст бота; message — входящее сообщение.
+// Делает: обрабатывает сообщение и перехватывает панику, чтобы одно сообщение не уронило весь процесс.
+// Возвращает: ничего; при панике пользователь получает нейтральный ответ, а паника пишется в лог.
+func (bot *Bot) safeHandle(ctx context.Context, message Message) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			bot.logger.ErrorContext(ctx, "panic while handling a message", "panic", recovered)
+			bot.reply(ctx, message.Chat.ID, failureReply)
+		}
+	}()
+	bot.handle(ctx, message)
+}
+
 func (bot *Bot) handle(ctx context.Context, message Message) {
 	if message.From == nil || message.From.IsBot || strings.TrimSpace(message.Text) == "" {
 		return
@@ -184,7 +197,7 @@ func (bot *Bot) dispatch(ctx context.Context, inFlight *sync.WaitGroup, message 
 			next := queue.pending[0]
 			queue.pending = queue.pending[1:]
 			queue.mutex.Unlock()
-			bot.handle(ctx, next)
+			bot.safeHandle(ctx, next)
 		}
 	}()
 }

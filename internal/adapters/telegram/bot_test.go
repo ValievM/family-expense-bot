@@ -239,3 +239,25 @@ func TestBotKeepsMessageOrderPerUser(t *testing.T) {
 	}
 	stop()
 }
+
+// Проверяет: паника в обработчике не роняет бота: пользователь получает нейтральный ответ, следующее сообщение обрабатывается.
+func TestBotSurvivesPanicInHandler(t *testing.T) {
+	gateway := newFakeGateway([]telegram.Update{
+		textUpdate(1, 42, "private", "паника"),
+		textUpdate(2, 42, "private", "норма"),
+	})
+	stop := runBot(t, gateway, responderFunc(func(_ context.Context, _ int64, text string) (string, error) {
+		if text == "паника" {
+			panic("boom")
+		}
+		return "ok", nil
+	}), allowList{42: true})
+
+	first := nextSent(t, gateway)
+	second := nextSent(t, gateway)
+	stop()
+
+	if !strings.Contains(first.text, "Что-то пошло не так") || second.text != "ok" {
+		t.Errorf("replies = %q, %q; want a neutral failure and then ok", first.text, second.text)
+	}
+}
