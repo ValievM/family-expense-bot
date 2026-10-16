@@ -34,8 +34,14 @@ import (
 )
 
 const (
-	databaseWait    = 30 * time.Second
-	shutdownTimeout = 10 * time.Second
+	databaseWait     = 30 * time.Second
+	databasePollStep = time.Second
+	shutdownTimeout  = 10 * time.Second
+
+	readHeaderTimeout = 5 * time.Second
+	readTimeout       = 15 * time.Second
+	writeTimeout      = 30 * time.Second
+	idleTimeout       = 60 * time.Second
 )
 
 func main() {
@@ -69,10 +75,10 @@ func run() error {
 	httpServer := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           httpapi.NewServer(service, logger).Handler(),
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       60 * time.Second,
+		ReadHeaderTimeout: readHeaderTimeout,
+		ReadTimeout:       readTimeout,
+		WriteTimeout:      writeTimeout,
+		IdleTimeout:       idleTimeout,
 	}
 
 	var workers sync.WaitGroup
@@ -158,7 +164,7 @@ func waitForDatabase(ctx context.Context, pool *pgxpool.Pool) error {
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("database is not reachable: %w", ctx.Err())
-		case <-time.After(time.Second):
+		case <-time.After(databasePollStep):
 		}
 	}
 }
