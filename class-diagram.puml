@@ -2,7 +2,7 @@
 ' Диаграмма классов выполнена в нотации UML (ГОСТ Р ИСО/МЭК 19501-2010, UML 1.4.2):
 ' класс из трёх секций (имя, атрибуты, операции), видимость + (public) и - (private),
 ' стереотип «interface» для интерфейсов, пакеты для слоёв, кратность на концах ассоциаций.
-' Генерация: PLANTUML_LIMIT_SIZE=20000 plantuml -tsvg -tpng class-diagram.puml
+' Генерация: PLANTUML_LIMIT_SIZE=20000 plantuml -tsvg class-diagram.puml
 
 title Диаграмма классов: Семейный учёт расходов (Go, hexagonal)\n(файл векторный: открывайте class-diagram.svg и масштабируйте)
 
