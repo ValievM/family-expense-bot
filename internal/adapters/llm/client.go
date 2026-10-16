@@ -112,9 +112,20 @@ func (client *Client) send(ctx context.Context, payload []byte) (ports.Message, 
 func retryable(err error) bool {
 	var apiErr *APIError
 	if errors.As(err, &apiErr) {
+		if isOutOfFunds(apiErr.Message) {
+			return false
+		}
 		return apiErr.Status == http.StatusTooManyRequests || apiErr.Status >= http.StatusInternalServerError
 	}
 	return false
+}
+
+// Принимает: message — текст ошибки провайдера.
+// Делает: узнаёт окончательные отказы «нет денег или квоты», которые провайдеры отдают с кодом 429; повтор их не лечит.
+// Возвращает: true, если ждать и повторять бессмысленно.
+func isOutOfFunds(message string) bool {
+	lower := strings.ToLower(message)
+	return strings.Contains(lower, "insufficient") || strings.Contains(lower, "quota") || strings.Contains(lower, "recharge")
 }
 
 // Принимает: ctx — контекст; duration — длительность паузы.

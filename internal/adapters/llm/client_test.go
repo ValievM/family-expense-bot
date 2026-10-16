@@ -158,3 +158,21 @@ func TestCompleteStopsRetryingWhenContextIsCancelled(t *testing.T) {
 		t.Errorf("err = %v, want context.Canceled", err)
 	}
 }
+
+// Проверяет: 429 «недостаточно средств» (ключ без баланса) не повторяется, в отличие от обычного 429.
+func TestCompleteDoesNotRetryOutOfFundsRateLimit(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"error":{"code":"1113","message":"Insufficient balance or no resource package. Please recharge."}}`))
+	}))
+	defer server.Close()
+
+	_, err := newTestClient(server.URL).Complete(context.Background(), ports.Request{})
+
+	var apiErr *llm.APIError
+	if !errors.As(err, &apiErr) || calls.Load() != 1 {
+		t.Errorf("err = %v, calls = %d, want one APIError without retries", err, calls.Load())
+	}
+}
