@@ -8,10 +8,9 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/ports"
 )
 
-// addExpenseTool создаёт трату владельца сообщения.
 type addExpenseTool struct{}
 
-// addExpenseArguments — аргументы add_expense; поля user_id намеренно нет.
+// user_id намеренно нет: владелец берётся из области, не от модели.
 type addExpenseArguments struct {
 	Amount   float64 `json:"amount"`
 	Category string  `json:"category"`
@@ -19,9 +18,6 @@ type addExpenseArguments struct {
 	Comment  string  `json:"comment"`
 }
 
-// Принимает: ничего.
-// Делает: описывает инструмент add_expense и схему его аргументов.
-// Возвращает: ToolSpec с обязательными amount и category.
 func (tool addExpenseTool) Spec() ports.ToolSpec {
 	return ports.ToolSpec{
 		Name:        "add_expense",
@@ -35,9 +31,9 @@ func (tool addExpenseTool) Spec() ports.ToolSpec {
 	}
 }
 
-// Принимает: ctx — контекст запроса; expenses — траты владельца сообщения; arguments — JSON от модели.
-// Делает: разбирает аргументы, собирает значения домена (сумма, категория, день, комментарий) и сохраняет трату через сервис.
-// Возвращает: созданную трату в виде expenseView либо ошибку аргументов или валидации.
+// Принимает: ctx; expenses — траты владельца; arguments — JSON от модели.
+// Делает: разбирает аргументы, собирает значения домена и создаёт трату.
+// Возвращает: expenseView созданной траты либо ошибку аргументов или валидации.
 func (tool addExpenseTool) Execute(ctx context.Context, expenses ports.UserExpenses, arguments json.RawMessage) (any, error) {
 	var args addExpenseArguments
 	if err := decodeArguments(arguments, &args); err != nil {

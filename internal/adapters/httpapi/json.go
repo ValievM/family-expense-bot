@@ -7,11 +7,10 @@ import (
 	"net/http"
 )
 
-// maxBodyBytes — максимальный размер тела запроса (1 МиБ).
 const maxBodyBytes = 1 << 20
 
-// Принимает: w — writer ответа, status — HTTP-статус, body — значение для JSON (nil — без тела).
-// Делает: выставляет Content-Type и статус, затем кодирует body; ошибка кодирования игнорируется, так как статус уже отправлен.
+// Принимает: w — ответ, status — HTTP-статус, body — значение для JSON (nil — без тела).
+// Делает: выставляет Content-Type и статус, кодирует body.
 // Возвращает: ничего.
 func writeJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -23,9 +22,9 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 	_ = json.NewEncoder(w).Encode(body)
 }
 
-// Принимает: w — writer ответа (для ограничения размера тела), r — входящий запрос, destination — указатель на целевую структуру.
-// Делает: читает ровно один JSON-объект с лимитом maxBodyBytes и отвергает неизвестные поля и лишние данные после объекта.
-// Возвращает: nil при успехе; requestError invalid_json при ошибке.
+// Принимает: w, r — ответ и запрос, destination — указатель на целевую структуру.
+// Делает: читает один JSON-объект с лимитом maxBodyBytes; неизвестные поля и лишние данные отвергает.
+// Возвращает: nil или requestError invalid_json.
 func decodeJSON(w http.ResponseWriter, r *http.Request, destination any) error {
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodyBytes))
 	decoder.DisallowUnknownFields()

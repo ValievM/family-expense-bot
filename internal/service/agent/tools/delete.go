@@ -8,17 +8,12 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/ports"
 )
 
-// deleteExpenseTool удаляет трату владельца сообщения.
 type deleteExpenseTool struct{}
 
-// deleteExpenseArguments — аргументы delete_expense.
 type deleteExpenseArguments struct {
 	ID int64 `json:"id"`
 }
 
-// Принимает: ничего.
-// Делает: описывает инструмент delete_expense с обязательным id.
-// Возвращает: ToolSpec.
 func (tool deleteExpenseTool) Spec() ports.ToolSpec {
 	return ports.ToolSpec{
 		Name:        "delete_expense",
@@ -29,9 +24,9 @@ func (tool deleteExpenseTool) Spec() ports.ToolSpec {
 	}
 }
 
-// Принимает: ctx — контекст запроса; expenses — траты владельца сообщения; arguments — JSON от модели.
-// Делает: находит трату владельца, удаляет её и возвращает описание удалённого для подтверждения пользователю.
-// Возвращает: карту с признаком deleted и данными траты либо ошибку аргументов или «не найдено».
+// Принимает: ctx; expenses; arguments — JSON от модели.
+// Делает: находит трату владельца и удаляет её.
+// Возвращает: карту deleted и данные траты либо ошибку аргументов или «не найдено».
 func (tool deleteExpenseTool) Execute(ctx context.Context, expenses ports.UserExpenses, arguments json.RawMessage) (any, error) {
 	var args deleteExpenseArguments
 	if err := decodeArguments(arguments, &args); err != nil {

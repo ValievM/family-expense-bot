@@ -10,9 +10,6 @@ import (
 
 var created = time.Date(2026, time.January, 2, 10, 0, 0, 0, time.UTC)
 
-// Принимает: t — тестовый контекст; kopecks — сумма.
-// Делает: собирает корректные значения-объекты для входа конструктора.
-// Возвращает: заполненный NewExpenseInput.
 func validInput(t *testing.T, kopecks int64) domain.NewExpenseInput {
 	t.Helper()
 	owner, err := domain.NewUserID(7)
@@ -31,9 +28,7 @@ func validInput(t *testing.T, kopecks int64) domain.NewExpenseInput {
 	return domain.NewExpenseInput{Owner: owner, Amount: amount, Category: domain.CategoryFood, SpentOn: day, Comment: comment, At: created}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что NewExpense принимает корректные данные и заполняет время создания и изменения.
-// Возвращает: ничего.
+// Проверяет: NewExpense принимает корректные данные и ставит время создания и изменения.
 func TestNewExpenseAcceptsValidInput(t *testing.T) {
 	expense, err := domain.NewExpense(validInput(t, 35000))
 	if err != nil {
@@ -46,9 +41,7 @@ func TestNewExpenseAcceptsValidInput(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что конструктор защищает каждый инвариант агрегата.
-// Возвращает: ничего.
+// Проверяет: NewExpense защищает каждый инвариант агрегата.
 func TestNewExpenseRejectsBrokenInvariants(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -74,9 +67,7 @@ func TestNewExpenseRejectsBrokenInvariants(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет Apply: изменяются только заданные поля, время изменения обновляется, исходный расход остаётся прежним.
-// Возвращает: ничего.
+// Проверяет: Apply меняет только заданные поля и updatedAt, исходный расход не затрагивается.
 func TestApplyChangesOnlyGivenFieldsAndKeepsOriginal(t *testing.T) {
 	original, _ := domain.NewExpense(validInput(t, 35000))
 	original = original.WithID(42)
@@ -97,9 +88,7 @@ func TestApplyChangesOnlyGivenFieldsAndKeepsOriginal(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что Apply отвергает изменение, ломающее инвариант, и не возвращает частично изменённый расход.
-// Возвращает: ничего.
+// Проверяет: Apply отвергает изменение, ломающее инвариант.
 func TestApplyRejectsInvalidResult(t *testing.T) {
 	original, _ := domain.NewExpense(validInput(t, 100))
 	zero := domain.Money{}
@@ -113,9 +102,7 @@ func TestApplyRejectsInvalidResult(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет правило владения.
-// Возвращает: ничего.
+// Проверяет: OwnedBy различает владельца и чужого.
 func TestOwnedBy(t *testing.T) {
 	expense, _ := domain.NewExpense(validInput(t, 100))
 	same, _ := domain.NewUserID(7)
@@ -126,9 +113,7 @@ func TestOwnedBy(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет Restore: корректный снимок восстанавливается, повреждённый (нулевая сумма) отклоняется.
-// Возвращает: ничего.
+// Проверяет: Restore принимает корректный снимок и отклоняет повреждённый.
 func TestRestoreValidatesStoredState(t *testing.T) {
 	input := validInput(t, 100)
 	snapshot := domain.Snapshot{

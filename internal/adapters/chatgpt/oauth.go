@@ -18,7 +18,7 @@ const (
 	maxTokenBody        = 1 << 16
 )
 
-// OAuth общается с сервером авторизации OpenAI; адреса можно подменить в тестах.
+// OAuth — клиент сервера авторизации OpenAI; адреса подменяются в тестах.
 type OAuth struct {
 	AuthorizeURL string
 	TokenURL     string
@@ -26,9 +26,6 @@ type OAuth struct {
 	Now          func() time.Time
 }
 
-// Принимает: ничего.
-// Делает: создаёт клиента с боевыми адресами и таймаутом 30 секунд.
-// Возвращает: готовый OAuth.
 func NewOAuth() *OAuth {
 	return &OAuth{
 		AuthorizeURL: defaultAuthorizeURL,
@@ -38,32 +35,26 @@ func NewOAuth() *OAuth {
 	}
 }
 
-// TokenError — отказ сервера авторизации с кодом из OAuth.
 type TokenError struct {
 	Status      int
 	Code        string
 	Description string
 }
 
-// Принимает: ничего.
-// Делает: формирует текст ошибки без токенов.
-// Возвращает: строку с HTTP-статусом и кодом.
 func (err *TokenError) Error() string {
 	return fmt.Sprintf("token endpoint returned %d: %s %s", err.Status, err.Code, err.Description)
 }
 
-// tokenResponse — ответ точки выдачи токенов.
 type tokenResponse struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
-	IDToken      string `json:"id_token"`
 	ExpiresIn    int64  `json:"expires_in"`
 	Scope        string `json:"scope"`
 }
 
-// Принимает: ctx — контекст; clientID — выданный идентификатор клиента; code — код из callback; verifier — PKCE-секрет; redirectURI — тот же адрес, что в запросе входа.
+// Принимает: ctx; clientID; code — код из callback; verifier — PKCE-секрет; redirectURI — как в запросе входа.
 // Делает: обменивает код авторизации на токены.
-// Возвращает: токены либо *TokenError или ошибку сети.
+// Возвращает: токены, *TokenError или ошибку сети.
 func (oauth *OAuth) exchangeCode(ctx context.Context, clientID, code, verifier, redirectURI string) (Credentials, error) {
 	form := url.Values{
 		"grant_type":    {"authorization_code"},
@@ -76,9 +67,9 @@ func (oauth *OAuth) exchangeCode(ctx context.Context, clientID, code, verifier, 
 	return oauth.requestTokens(ctx, form, Credentials{ClientID: clientID})
 }
 
-// Принимает: ctx — контекст; current — сохранённые данные с токеном обновления.
-// Делает: меняет токен обновления на новую пару токенов; область (scope) не передаётся, чтобы сохранить выданные права.
-// Возвращает: обновлённые данные либо *TokenError или ошибку сети.
+// Принимает: ctx; current — сохранённые данные с токеном обновления.
+// Делает: меняет токен обновления на новую пару; scope не передаётся, чтобы сохранились выданные права.
+// Возвращает: обновлённые данные, *TokenError или ошибку сети.
 func (oauth *OAuth) Refresh(ctx context.Context, current Credentials) (Credentials, error) {
 	form := url.Values{
 		"grant_type":    {"refresh_token"},
@@ -89,9 +80,9 @@ func (oauth *OAuth) Refresh(ctx context.Context, current Credentials) (Credentia
 	return oauth.requestTokens(ctx, form, current)
 }
 
-// Принимает: ctx — контекст; form — параметры запроса; base — данные, поля которых сохраняются, если сервер их не вернул.
-// Делает: отправляет POST и разбирает токены, подставляя время истечения.
-// Возвращает: новые данные либо ошибку; тело ответа в ошибки не попадает.
+// Принимает: ctx; form — параметры запроса; base — данные, поля которых остаются, если сервер их не вернул.
+// Делает: отправляет POST и разбирает токены, считая время истечения.
+// Возвращает: новые данные или ошибку; тело ответа в ошибку не попадает.
 func (oauth *OAuth) requestTokens(ctx context.Context, form url.Values, base Credentials) (Credentials, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, oauth.TokenURL, strings.NewReader(form.Encode()))
 	if err != nil {
@@ -131,9 +122,6 @@ func (oauth *OAuth) requestTokens(ctx context.Context, form url.Values, base Cre
 	if tokens.RefreshToken != "" {
 		updated.RefreshToken = tokens.RefreshToken
 	}
-	if tokens.IDToken != "" {
-		updated.IDToken = tokens.IDToken
-	}
 	if tokens.Scope != "" {
 		updated.Scope = tokens.Scope
 	}
@@ -142,7 +130,7 @@ func (oauth *OAuth) requestTokens(ctx context.Context, form url.Values, base Cre
 }
 
 // Принимает: err — ошибка обновления токена.
-// Делает: проверяет коды, при которых токен обновления больше не годится и нужен новый вход.
+// Делает: проверяет, что токен обновления больше не годится и нужен новый вход.
 // Возвращает: true для invalid_grant и родственных кодов.
 func isTerminalRefreshError(err error) bool {
 	var tokenErr *TokenError

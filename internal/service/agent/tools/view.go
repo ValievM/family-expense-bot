@@ -2,7 +2,7 @@ package tools
 
 import "github.com/ValievM/family-expense-bot/internal/domain"
 
-// expenseView — представление траты для модели: сумма уже в рублях строкой, чтобы не считать копейки.
+// Сумма уже в рублях строкой: модель не должна считать копейки.
 type expenseView struct {
 	ID            int64  `json:"id"`
 	AmountRub     string `json:"amount_rub"`
@@ -12,9 +12,6 @@ type expenseView struct {
 	Comment       string `json:"comment,omitempty"`
 }
 
-// Принимает: item — трата из домена.
-// Делает: преобразует трату в безопасное для модели представление без user_id.
-// Возвращает: заполненный expenseView.
 func newExpenseView(item domain.Expense) expenseView {
 	return expenseView{
 		ID:            int64(item.ID()),

@@ -14,27 +14,22 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// expenseColumns — список колонок таблицы expenses в порядке, который читает scanExpense.
+// expenseColumns — порядок колонок, который читает scanExpense.
 const expenseColumns = "id, user_id, amount, category, spent_at, comment, created_at, updated_at"
 
-// Repository — хранение расходов в PostgreSQL через pgx.
 type Repository struct {
 	pool *pgxpool.Pool
 }
 
-// Проверка на этапе компиляции, что Repository реализует порт ExpenseRepository.
 var _ ports.ExpenseRepository = (*Repository)(nil)
 
-// Принимает: pool — пул соединений.
-// Делает: привязывает пул; дни хранятся типом DATE без часового пояса, поэтому пояс не нужен.
-// Возвращает: готовый *Repository.
 func NewRepository(pool *pgxpool.Pool) *Repository {
 	return &Repository{pool: pool}
 }
 
-// Принимает: ctx — контекст запроса; item — новый расход без ID.
-// Делает: вставляет расход одним INSERT ... RETURNING.
-// Возвращает: сохранённый расход с присвоенным ID или ошибку БД.
+// Принимает: ctx — контекст, item — новый расход без ID.
+// Делает: вставляет расход через INSERT ... RETURNING.
+// Возвращает: сохранённый расход с ID или ошибку БД.
 func (repository *Repository) Create(ctx context.Context, item domain.Expense) (domain.Expense, error) {
 	query := `INSERT INTO expenses (user_id, amount, category, spent_at, comment, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -54,9 +49,9 @@ func (repository *Repository) Create(ctx context.Context, item domain.Expense) (
 	return created, nil
 }
 
-// Принимает: ctx — контекст запроса; id — идентификатор расхода.
+// Принимает: ctx — контекст, id — идентификатор расхода.
 // Делает: читает расход по ID.
-// Возвращает: расход или ports.ErrNotFound, если записи нет.
+// Возвращает: расход или ports.ErrNotFound.
 func (repository *Repository) Get(ctx context.Context, id domain.ExpenseID) (domain.Expense, error) {
 	item, err := scanExpense(repository.pool.QueryRow(ctx,
 		"SELECT "+expenseColumns+" FROM expenses WHERE id = $1", int64(id)))
@@ -66,9 +61,9 @@ func (repository *Repository) Get(ctx context.Context, id domain.ExpenseID) (dom
 	return item, nil
 }
 
-// Принимает: ctx — контекст запроса; filter — необязательные условия по владельцу, категории и дням.
-// Делает: выбирает расходы, применяя заданные условия (дни включительно), и сортирует по дню трат по убыванию, затем по ID.
-// Возвращает: срез расходов (пустой, не nil) или ошибку БД.
+// Принимает: ctx — контекст, filter — необязательные условия по владельцу, категории и дням.
+// Делает: применяет заданные условия (дни включительно); сортирует по дню убыванию, затем по ID.
+// Возвращает: срез расходов (не nil) или ошибку БД.
 func (repository *Repository) List(ctx context.Context, filter ports.ListFilter) ([]domain.Expense, error) {
 	var owner, category, from, to any
 	if filter.Owner != nil {
@@ -109,9 +104,9 @@ func (repository *Repository) List(ctx context.Context, filter ports.ListFilter)
 	return items, nil
 }
 
-// Принимает: ctx — контекст запроса.
+// Принимает: ctx — контекст.
 // Делает: выбирает уникальных владельцев расходов.
-// Возвращает: идентификаторы пользователей по возрастанию или ошибку БД.
+// Возвращает: ID по возрастанию или ошибку БД.
 func (repository *Repository) ListUserIDs(ctx context.Context) ([]domain.UserID, error) {
 	rows, err := repository.pool.Query(ctx, "SELECT DISTINCT user_id FROM expenses ORDER BY user_id")
 	if err != nil {
@@ -137,9 +132,9 @@ func (repository *Repository) ListUserIDs(ctx context.Context) ([]domain.UserID,
 	return userIDs, nil
 }
 
-// Принимает: ctx — контекст запроса; item — расход с ID и новыми значениями.
-// Делает: обновляет только изменяемые поля (сумма, категория, день, комментарий, updated_at); владелец и created_at не меняются.
-// Возвращает: сохранённый расход или ports.ErrNotFound, если записи нет.
+// Принимает: ctx — контекст, item — расход с ID и новыми значениями.
+// Делает: обновляет сумму, категорию, день, комментарий и updated_at; владелец и created_at неизменны.
+// Возвращает: сохранённый расход или ports.ErrNotFound.
 func (repository *Repository) Update(ctx context.Context, item domain.Expense) (domain.Expense, error) {
 	query := `UPDATE expenses
 		SET amount = $2, category = $3, spent_at = $4, comment = $5, updated_at = $6
@@ -159,9 +154,9 @@ func (repository *Repository) Update(ctx context.Context, item domain.Expense) (
 	return updated, nil
 }
 
-// Принимает: ctx — контекст запроса; id — идентификатор расхода.
+// Принимает: ctx — контекст, id — идентификатор расхода.
 // Делает: удаляет расход по ID.
-// Возвращает: nil при успехе, ports.ErrNotFound если ничего не удалено, либо ошибку БД.
+// Возвращает: nil, ports.ErrNotFound если ничего не удалено, либо ошибку БД.
 func (repository *Repository) Delete(ctx context.Context, id domain.ExpenseID) error {
 	result, err := repository.pool.Exec(ctx, "DELETE FROM expenses WHERE id = $1", int64(id))
 	if err != nil {
@@ -178,8 +173,8 @@ type rowScanner interface {
 }
 
 // Принимает: row — строка результата запроса.
-// Делает: считывает колонки, собирает domain.Snapshot из значений-объектов и восстанавливает агрегат; бесконечные и пустые даты отвергаются.
-// Возвращает: расход, ports.ErrNotFound при отсутствии строки либо ошибку чтения или повреждённой записи (не ErrNotFound).
+// Делает: читает колонки и восстанавливает агрегат через domain.Snapshot; бесконечные и пустые даты отвергает.
+// Возвращает: расход, ports.ErrNotFound при отсутствии строки либо иную ошибку чтения.
 func scanExpense(row rowScanner) (domain.Expense, error) {
 	var (
 		id, userID, amount int64
@@ -226,7 +221,7 @@ func scanExpense(row rowScanner) (domain.Expense, error) {
 }
 
 // Принимает: day — календарный день.
-// Делает: превращает день в pgtype.Date по его UTC-полуночи, без сдвигов часовых поясов.
+// Делает: строит pgtype.Date по UTC-полуночи, без сдвига часовых поясов.
 // Возвращает: валидный pgtype.Date.
 func toPostgresDate(day domain.Day) pgtype.Date {
 	return pgtype.Date{Time: day.Time(), Valid: true}

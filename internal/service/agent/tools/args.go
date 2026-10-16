@@ -9,9 +9,9 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/ports"
 )
 
-// Принимает: raw — JSON аргументов от модели; destination — указатель на структуру аргументов.
-// Делает: строго разбирает JSON и запрещает неизвестные поля, поэтому попытка передать user_id отклоняется.
-// Возвращает: nil или ArgumentError с описанием проблемы.
+// Принимает: raw — JSON от модели; destination — структура аргументов.
+// Делает: строго разбирает JSON, неизвестные поля (в т.ч. user_id) запрещены.
+// Возвращает: nil или ArgumentError.
 func decodeArguments(raw json.RawMessage, destination any) error {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		raw = json.RawMessage("{}")
@@ -24,9 +24,9 @@ func decodeArguments(raw json.RawMessage, destination any) error {
 	return nil
 }
 
-// Принимает: raw — необязательная дата YYYY-MM-DD от модели.
+// Принимает: raw — необязательная дата YYYY-MM-DD.
 // Делает: разбирает дату, если она передана.
-// Возвращает: указатель на день, nil для отсутствующей даты либо ArgumentError при неверном формате.
+// Возвращает: указатель на день, nil для пустой даты либо ArgumentError.
 func parseDateArgument(raw *string) (*domain.Day, error) {
 	if raw == nil || *raw == "" {
 		return nil, nil
@@ -38,9 +38,9 @@ func parseDateArgument(raw *string) (*domain.Day, error) {
 	return &parsed, nil
 }
 
-// Принимает: properties — описание свойств объекта; required — имена обязательных свойств.
-// Делает: строит JSON Schema объекта без дополнительных свойств; при невозможности сериализовать паникует, потому что это ошибка программиста при старте.
-// Возвращает: готовую схему.
+// Принимает: properties; required — обязательные свойства.
+// Делает: строит JSON Schema объекта без лишних свойств; паникует при сбое сериализации (ошибка программиста).
+// Возвращает: схему.
 func objectSchema(properties map[string]any, required ...string) json.RawMessage {
 	schema := map[string]any{
 		"type":                 "object",
@@ -57,9 +57,6 @@ func objectSchema(properties map[string]any, required ...string) json.RawMessage
 	return encoded
 }
 
-// Принимает: ничего.
-// Делает: формирует описание свойства «категория» из единственного источника категорий в домене.
-// Возвращает: фрагмент JSON Schema с enum из ключей категорий.
 func categoryProperty() map[string]any {
 	categories := domain.Categories()
 	keys := make([]string, 0, len(categories))
@@ -69,9 +66,6 @@ func categoryProperty() map[string]any {
 	return map[string]any{"type": "string", "enum": keys, "description": "Ключ категории из закрытого списка."}
 }
 
-// Принимает: description — пояснение к дате.
-// Делает: формирует описание свойства даты в формате YYYY-MM-DD.
-// Возвращает: фрагмент JSON Schema.
 func dateProperty(description string) map[string]any {
 	return map[string]any{"type": "string", "description": description + " Формат YYYY-MM-DD."}
 }

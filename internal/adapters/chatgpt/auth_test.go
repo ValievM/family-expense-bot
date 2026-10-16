@@ -27,9 +27,6 @@ var uuidURN = regexp.MustCompile(`^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}
 
 var baseTime = time.Date(2026, time.October, 16, 12, 0, 0, 0, time.UTC)
 
-// Принимает: tokenURL — адрес поддельной точки выдачи токенов.
-// Делает: создаёт клиента OAuth с фиксированным временем.
-// Возвращает: настроенный *OAuth.
 func testOAuth(tokenURL string) *chatgpt.OAuth {
 	return &chatgpt.OAuth{
 		AuthorizeURL: "https://auth.test/authorize",
@@ -39,9 +36,7 @@ func testOAuth(tokenURL string) *chatgpt.OAuth {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет сохранение: чтение несуществующего файла даёт ErrNotLoggedIn, запись создаёт файл с правами 0600 и круговой обмен без потерь.
-// Возвращает: ничего.
+// Проверяет: чтение несуществующего файла даёт ErrNotLoggedIn, запись создаёт файл 0600, данные не теряются.
 func TestFileStoreRoundTripAndPermissions(t *testing.T) {
 	store := chatgpt.NewFileStore(filepath.Join(t.TempDir(), "nested", "auth.json"))
 	if _, err := store.Load(); !errors.Is(err, chatgpt.ErrNotLoggedIn) {
@@ -58,9 +53,7 @@ func TestFileStoreRoundTripAndPermissions(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что файл токенов недоступен другим пользователям.
-// Возвращает: ничего.
+// Проверяет: файл токенов недоступен другим пользователям.
 func TestFileStoreWritesPrivateFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "auth.json")
 	if err := chatgpt.NewFileStore(path).Save(chatgpt.Credentials{AccessToken: "secret"}); err != nil {
@@ -76,25 +69,18 @@ func TestFileStoreWritesPrivateFile(t *testing.T) {
 	}
 }
 
-// memoryStore — хранилище в памяти, считающее сохранения.
 type memoryStore struct {
 	mutex       sync.Mutex
 	credentials chatgpt.Credentials
 	saves       int
 }
 
-// Принимает: ничего.
-// Делает: отдаёт сохранённые данные.
-// Возвращает: данные и nil.
 func (store *memoryStore) Load() (chatgpt.Credentials, error) {
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
 	return store.credentials, nil
 }
 
-// Принимает: credentials — данные для записи.
-// Делает: запоминает их и увеличивает счётчик.
-// Возвращает: nil.
 func (store *memoryStore) Save(credentials chatgpt.Credentials) error {
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
@@ -103,9 +89,7 @@ func (store *memoryStore) Save(credentials chatgpt.Credentials) error {
 	return nil
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что действующий токен выдаётся без обращения к серверу.
-// Возвращает: ничего.
+// Проверяет: действующий токен выдаётся без обращения к серверу.
 func TestTokenSourceReturnsFreshTokenWithoutRefresh(t *testing.T) {
 	var calls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { calls.Add(1) }))
@@ -119,9 +103,7 @@ func TestTokenSourceReturnsFreshTokenWithoutRefresh(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет обновление: правильный запрос (без scope), сохранение новой пары на диск до выдачи и ровно одно обновление при гонке из многих горутин.
-// Возвращает: ничего.
+// Проверяет: запрос обновления без scope, сохранение новой пары до выдачи и ровно одно обновление при гонке горутин.
 func TestTokenSourceRefreshesOnceAndPersistsRotatedToken(t *testing.T) {
 	var calls atomic.Int32
 	var form url.Values
@@ -162,9 +144,7 @@ func TestTokenSourceRefreshesOnceAndPersistsRotatedToken(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что отозванный токен обновления превращается в ErrReauthRequired, а временный сбой сервера нет.
-// Возвращает: ничего.
+// Проверяет: отозванный токен обновления даёт ErrReauthRequired, временный сбой сервера нет.
 func TestTokenSourceReportsReauthOnlyForTerminalErrors(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -198,9 +178,7 @@ func TestTokenSourceReportsReauthOnlyForTerminalErrors(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет отказ, если у входа нет права расходовать подписку.
-// Возвращает: ничего.
+// Проверяет: вход без права расходовать подписку отклоняется.
 func TestTokenSourceRequiresPlanScope(t *testing.T) {
 	store := &memoryStore{credentials: chatgpt.Credentials{AccessToken: "a", ExpiresAt: baseTime.Add(time.Hour), Scope: "openid"}}
 
@@ -211,16 +189,12 @@ func TestTokenSourceRequiresPlanScope(t *testing.T) {
 	}
 }
 
-// fakeBrowser играет роль браузера: разбирает адрес входа и обращается к callback-серверу.
 type fakeBrowser struct {
 	t       *testing.T
 	mutate  func(query url.Values) url.Values
 	authURL *url.URL
 }
 
-// Принимает: authURL — адрес страницы входа.
-// Делает: проверяет параметры запроса, затем делает вид, что пользователь согласился, и вызывает redirect_uri с кодом.
-// Возвращает: nil.
 func (browser *fakeBrowser) open(authURL string) error {
 	parsed, err := url.Parse(authURL)
 	if err != nil {
@@ -241,9 +215,7 @@ func (browser *fakeBrowser) open(authURL string) error {
 	return nil
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет полный вход: параметры PKCE и ресурса, регистрацию с именем приложения, обмен кода с верным code_verifier и сохранение выданного client_id.
-// Возвращает: ничего.
+// Проверяет: полный вход: параметры PKCE и ресурса, регистрация с именем, обмен кода с верным verifier, сохранение client_id.
 func TestLoginCompletesPKCEFlow(t *testing.T) {
 	var exchange url.Values
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -282,9 +254,7 @@ func TestLoginCompletesPKCEFlow(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет повторный вход: используются сохранённые client_id и host id, а имя приложения не отправляется.
-// Возвращает: ничего.
+// Проверяет: повторный вход использует сохранённые client_id и host id и не шлёт имя приложения.
 func TestLoginReusesIssuedClientOnReauthorization(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"access_token":"A","refresh_token":"R","expires_in":60,"scope":"chatgpt.tokens.use.direct"}`))
@@ -309,9 +279,7 @@ func TestLoginReusesIssuedClientOnReauthorization(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет отказы входа: чужой state, отказ пользователя и отсутствие права на подписку; во всех случаях обмен кода не должен происходить, кроме последнего.
-// Возвращает: ничего.
+// Проверяет: чужой state, отказ пользователя и отсутствие права на подписку не дают токенов; обмен кода только в последнем случае.
 func TestLoginRejectsUnsafeOutcomes(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -349,9 +317,7 @@ func TestLoginRejectsUnsafeOutcomes(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет таймаут: если пользователь не вернулся, вход завершается ошибкой, а не зависает.
-// Возвращает: ничего.
+// Проверяет: если пользователь не вернулся, вход завершается ошибкой по таймауту, а не зависает.
 func TestLoginTimesOutWhenUserNeverReturns(t *testing.T) {
 	_, err := chatgpt.Login(context.Background(), testOAuth("http://unused"), chatgpt.LoginOptions{
 		OpenBrowser: func(string) error { return nil }, Timeout: 50 * time.Millisecond,

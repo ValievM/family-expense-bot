@@ -2,12 +2,10 @@ package domain
 
 import "time"
 
-// ExpenseID — идентификатор расхода; нулевое значение означает «ещё не сохранён».
+// ExpenseID — ноль означает «ещё не сохранён».
 type ExpenseID int64
 
-// Expense — сущность и корень агрегата «расход». Поля закрыты: состояние меняется только через
-// конструктор и Apply, поэтому ни один экземпляр не нарушает инварианты (положительная сумма,
-// известная категория, заданные день и владелец).
+// Expense — корень агрегата; состояние меняется только через NewExpense, Restore и Apply.
 type Expense struct {
 	id        ExpenseID
 	owner     UserID
@@ -19,17 +17,16 @@ type Expense struct {
 	updatedAt time.Time
 }
 
-// NewExpenseInput — данные для создания нового расхода.
 type NewExpenseInput struct {
 	Owner    UserID
 	Amount   Money
 	Category Category
 	SpentOn  Day
 	Comment  Comment
-	At       time.Time // момент создания
+	At       time.Time
 }
 
-// Changes — частичное изменение расхода; nil означает «поле не меняется».
+// Changes — частичное изменение; nil означает «поле не меняется».
 type Changes struct {
 	Amount   *Money
 	Category *Category
@@ -37,7 +34,6 @@ type Changes struct {
 	Comment  *Comment
 }
 
-// Snapshot — полное состояние расхода для восстановления из хранилища.
 type Snapshot struct {
 	ID        ExpenseID
 	Owner     UserID
@@ -50,8 +46,8 @@ type Snapshot struct {
 }
 
 // Принимает: input — данные нового расхода.
-// Делает: создаёт расход и проверяет все инварианты; время создания и изменения равны input.At.
-// Возвращает: Expense без ID либо доменную ошибку (ErrInvalidUser, ErrInvalidAmount, ErrUnknownCategory, ErrInvalidDate).
+// Делает: проверяет инварианты; createdAt и updatedAt равны input.At.
+// Возвращает: Expense без ID либо доменную ошибку.
 func NewExpense(input NewExpenseInput) (Expense, error) {
 	expense := Expense{
 		owner: input.Owner, amount: input.Amount, category: input.Category,
@@ -65,7 +61,7 @@ func NewExpense(input NewExpenseInput) (Expense, error) {
 }
 
 // Принимает: snapshot — состояние, прочитанное из хранилища.
-// Делает: восстанавливает расход и проверяет инварианты, чтобы повреждённые данные не попадали в домен.
+// Делает: восстанавливает расход, проверяя инварианты, чтобы повреждённые данные не попали в домен.
 // Возвращает: Expense либо доменную ошибку.
 func Restore(snapshot Snapshot) (Expense, error) {
 	expense := Expense{
@@ -80,8 +76,8 @@ func Restore(snapshot Snapshot) (Expense, error) {
 }
 
 // Принимает: changes — изменяемые поля; now — момент изменения.
-// Делает: применяет изменения к копии и проверяет инварианты целиком; исходный расход не меняется, владелец и ID неизменны.
-// Возвращает: обновлённый Expense с новым временем изменения либо доменную ошибку.
+// Делает: применяет изменения к копии и проверяет инварианты; исходный расход, владелец и ID не меняются.
+// Возвращает: Expense с новым updatedAt либо доменную ошибку.
 func (expense Expense) Apply(changes Changes, now time.Time) (Expense, error) {
 	updated := expense
 	if changes.Amount != nil {
@@ -104,7 +100,7 @@ func (expense Expense) Apply(changes Changes, now time.Time) (Expense, error) {
 }
 
 // Принимает: id — идентификатор, присвоенный хранилищем.
-// Делает: возвращает копию расхода с ID; используется репозиторием после вставки.
+// Делает: копирует расход с ID, присвоенным хранилищем после вставки.
 // Возвращает: Expense с ID.
 func (expense Expense) WithID(id ExpenseID) Expense {
 	expense.id = id
@@ -112,55 +108,31 @@ func (expense Expense) WithID(id ExpenseID) Expense {
 }
 
 // Принимает: user — предполагаемый владелец.
-// Делает: проверяет принадлежность расхода пользователю; правило владения живёт в домене.
+// Делает: сравнивает владельца расхода с user.
 // Возвращает: true, если расход принадлежит user.
 func (expense Expense) OwnedBy(user UserID) bool {
 	return expense.owner == user
 }
 
-// Принимает: ничего.
-// Делает: читает идентификатор расхода.
-// Возвращает: ExpenseID; ноль означает «ещё не сохранён».
 func (expense Expense) ID() ExpenseID { return expense.id }
 
-// Принимает: ничего.
-// Делает: читает владельца.
-// Возвращает: UserID.
 func (expense Expense) Owner() UserID { return expense.owner }
 
-// Принимает: ничего.
-// Делает: читает сумму.
-// Возвращает: Money.
 func (expense Expense) Amount() Money { return expense.amount }
 
-// Принимает: ничего.
-// Делает: читает категорию.
-// Возвращает: Category.
 func (expense Expense) Category() Category { return expense.category }
 
-// Принимает: ничего.
-// Делает: читает день траты.
-// Возвращает: Day.
 func (expense Expense) SpentOn() Day { return expense.spentOn }
 
-// Принимает: ничего.
-// Делает: читает комментарий.
-// Возвращает: Comment.
 func (expense Expense) Comment() Comment { return expense.comment }
 
-// Принимает: ничего.
-// Делает: читает время создания.
-// Возвращает: time.Time.
 func (expense Expense) CreatedAt() time.Time { return expense.createdAt }
 
-// Принимает: ничего.
-// Делает: читает время последнего изменения.
-// Возвращает: time.Time.
 func (expense Expense) UpdatedAt() time.Time { return expense.updatedAt }
 
 // Принимает: ничего.
-// Делает: проверяет инварианты агрегата в фиксированном порядке.
-// Возвращает: nil либо первую найденную доменную ошибку.
+// Делает: проверяет инварианты в порядке owner, amount, category, day.
+// Возвращает: nil либо первую найденную ошибку.
 func (expense Expense) validate() error {
 	switch {
 	case expense.owner.IsZero():

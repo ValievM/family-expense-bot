@@ -17,9 +17,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет создание, чтение, фильтрацию, порядок, список владельцев, обновление и удаление расходов в реальной PostgreSQL, включая ErrNotFound.
-// Возвращает: ничего.
+// Проверяет: создание, чтение, фильтрацию, порядок, список владельцев, обновление и удаление расходов в реальной PostgreSQL, включая ErrNotFound.
 func TestRepositoryPostgresCRUDAndFilters(t *testing.T) {
 	repository := newPostgresRepository(t)
 	ctx := context.Background()
@@ -124,9 +122,7 @@ func TestRepositoryPostgresCRUDAndFilters(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: создаёт расходы на границах месяца и года и проверяет, что день, созданный через ParseDay, возвращается с тем же String().
-// Возвращает: ничего.
+// Проверяет: расходы на границах месяца и года: день, созданный через ParseDay, возвращается с тем же String().
 func TestRepositoryPostgresDayRoundTripWithoutDrift(t *testing.T) {
 	repository := newPostgresRepository(t)
 	ctx := context.Background()
@@ -151,9 +147,6 @@ func TestRepositoryPostgresDayRoundTripWithoutDrift(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: подключается к БД из TEST_DATABASE_URL (без неё пропускает тест), применяет миграции и создаёт пул и репозиторий.
-// Возвращает: *postgres.Repository.
 func newPostgresRepository(t *testing.T) *postgres.Repository {
 	t.Helper()
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
@@ -186,9 +179,6 @@ func newPostgresRepository(t *testing.T) *postgres.Repository {
 	return postgres.NewRepository(pool)
 }
 
-// Принимает: t — тестовый контекст; owner, kopecks, category, day, comment, createdAt — поля расхода (day в формате YYYY-MM-DD).
-// Делает: собирает новый расход через доменный конструктор.
-// Возвращает: Expense без ID.
 func newExpense(t *testing.T, owner domain.UserID, kopecks int64, category domain.Category, day, comment string, createdAt time.Time) domain.Expense {
 	t.Helper()
 	item, err := domain.NewExpense(domain.NewExpenseInput{
@@ -205,16 +195,10 @@ func newExpense(t *testing.T, owner domain.UserID, kopecks int64, category domai
 	return item
 }
 
-// Принимает: value — любое значение.
-// Делает: берёт его адрес для необязательных полей Changes.
-// Возвращает: указатель на копию значения.
 func ptr[T any](value T) *T {
 	return &value
 }
 
-// Принимает: t — тестовый контекст; got, want — сравниваемые расходы.
-// Делает: сравнивает все поля, кроме ID, времена через Equal.
-// Возвращает: ничего.
 func assertSameValues(t *testing.T, got, want domain.Expense) {
 	t.Helper()
 	if got.Owner() != want.Owner() || got.Amount() != want.Amount() || got.Category() != want.Category() ||
@@ -226,9 +210,6 @@ func assertSameValues(t *testing.T, got, want domain.Expense) {
 	}
 }
 
-// Принимает: t — тестовый контекст; name — имя проверки; got — список расходов; want — ожидаемые ID по порядку.
-// Делает: сверяет порядок ID в списке.
-// Возвращает: ничего.
 func assertIDs(t *testing.T, name string, got []domain.Expense, want ...domain.ExpenseID) {
 	t.Helper()
 	if len(got) != len(want) {
@@ -241,9 +222,6 @@ func assertIDs(t *testing.T, name string, got []domain.Expense, want ...domain.E
 	}
 }
 
-// Принимает: values — список владельцев.
-// Делает: проверяет, что значения идут строго по возрастанию.
-// Возвращает: true, если порядок строго возрастающий.
 func strictlyAscending(values []domain.UserID) bool {
 	for index := 1; index < len(values); index++ {
 		if values[index-1].Int64() >= values[index].Int64() {
@@ -253,9 +231,6 @@ func strictlyAscending(values []domain.UserID) bool {
 	return true
 }
 
-// Принимает: values — список владельцев; target — искомый владелец.
-// Делает: ищет владельца в списке.
-// Возвращает: true, если владелец найден.
 func contains(values []domain.UserID, target domain.UserID) bool {
 	for _, value := range values {
 		if value == target {

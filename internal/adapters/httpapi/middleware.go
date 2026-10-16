@@ -5,22 +5,18 @@ import (
 	"time"
 )
 
-// statusRecorder запоминает HTTP-статус ответа для логирования.
 type statusRecorder struct {
 	http.ResponseWriter
 	status int
 }
 
-// Принимает: status — HTTP-статус ответа.
-// Делает: сохраняет статус и передаёт его вложенному ResponseWriter.
-// Возвращает: ничего.
 func (recorder *statusRecorder) WriteHeader(status int) {
 	recorder.status = status
 	recorder.ResponseWriter.WriteHeader(status)
 }
 
-// Принимает: next — следующий обработчик в цепочке.
-// Делает: вызывает next и после него логирует метод, путь, статус и длительность запроса.
+// Принимает: next — следующий обработчик.
+// Делает: вызывает next, затем логирует метод, путь, статус и длительность.
 // Возвращает: обёрнутый http.Handler.
 func (server *Server) requestLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -32,8 +28,8 @@ func (server *Server) requestLogger(next http.Handler) http.Handler {
 	})
 }
 
-// Принимает: next — следующий обработчик в цепочке.
-// Делает: вызывает next, перехватывает panic, логирует её и отвечает 500 internal.
+// Принимает: next — следующий обработчик.
+// Делает: перехватывает panic из next, логирует её и отвечает 500 internal.
 // Возвращает: обёрнутый http.Handler.
 func (server *Server) recoverer(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

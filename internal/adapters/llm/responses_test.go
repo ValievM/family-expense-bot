@@ -14,9 +14,6 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/ports"
 )
 
-// Принимает: w — писатель ответа; events — строки событий (JSON без префикса data).
-// Делает: отправляет их как поток server-sent events.
-// Возвращает: ничего.
 func writeEvents(w http.ResponseWriter, events ...string) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	for _, event := range events {
@@ -24,16 +21,11 @@ func writeEvents(w http.ResponseWriter, events ...string) {
 	}
 }
 
-// Принимает: url — адрес тестового сервера; model — модель или пустая строка.
-// Делает: создаёт клиента Responses API без пауз между повторами.
-// Возвращает: *llm.ResponsesClient.
 func newResponsesTestClient(url, model string) *llm.ResponsesClient {
 	return llm.NewResponsesClient(url+"/v1/", model, llm.NewAPIKeyAuthorizer("token"), llm.WithBackoff(noBackoff))
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет запрос: store=false, stream=true, инструменты, а разговор переведён в сообщения, function_call и function_call_output.
-// Возвращает: ничего.
+// Проверяет: store=false, stream=true, инструменты; разговор переведён в message, function_call и function_call_output.
 func TestResponsesRequestShape(t *testing.T) {
 	var body map[string]any
 	var auth string
@@ -78,9 +70,7 @@ func TestResponsesRequestShape(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет разбор потока: текст из дельт и вызов функции из output_item.done.
-// Возвращает: ничего.
+// Проверяет: разбор потока: текст из дельт и вызов функции из output_item.done.
 func TestResponsesParsesTextAndToolCalls(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		writeEvents(w,
@@ -104,9 +94,7 @@ func TestResponsesParsesTextAndToolCalls(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что без заданной модели берётся первая с visibility=list и выбор запоминается.
-// Возвращает: ничего.
+// Проверяет: без заданной модели берётся первая с visibility=list, выбор запоминается.
 func TestResponsesPicksFirstListedModelOnce(t *testing.T) {
 	var modelCalls atomic.Int32
 	var used atomic.Value
@@ -135,9 +123,7 @@ func TestResponsesPicksFirstListedModelOnce(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет ошибки потока: сбой с кодом OpenAI, оборванный поток и отсутствие повторов для таких ошибок.
-// Возвращает: ничего.
+// Проверяет: сбой потока с кодом OpenAI и оборванный поток сообщаются без повторов.
 func TestResponsesStreamFailuresAreReportedWithoutRetry(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -171,9 +157,7 @@ func TestResponsesStreamFailuresAreReportedWithoutRetry(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет HTTP-ошибки: временный 503 повторяется, исчерпанный лимит подписки (429 с кодом) нет, 401 не повторяется.
-// Возвращает: ничего.
+// Проверяет: 503 повторяется, исчерпанный лимит подписки (429 с кодом) и 401 нет.
 func TestResponsesRetryPolicy(t *testing.T) {
 	tests := []struct {
 		name      string

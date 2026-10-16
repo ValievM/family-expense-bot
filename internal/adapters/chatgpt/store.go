@@ -9,21 +9,18 @@ import (
 	"path/filepath"
 )
 
-// FileStore хранит учётные данные в одном JSON-файле с правами только для владельца.
+// FileStore держит учётные данные в одном JSON-файле, доступном только владельцу.
 type FileStore struct {
 	path string
 }
 
-// Принимает: path — путь к файлу учётных данных.
-// Делает: создаёт хранилище; сам файл появится при первом сохранении.
-// Возвращает: FileStore.
 func NewFileStore(path string) FileStore {
 	return FileStore{path: path}
 }
 
 // Принимает: ничего.
 // Делает: читает и разбирает файл.
-// Возвращает: учётные данные, ErrNotLoggedIn если файла нет, либо ошибку чтения.
+// Возвращает: данные, ErrNotLoggedIn при отсутствии файла или ошибку чтения.
 func (store FileStore) Load() (Credentials, error) {
 	raw, err := os.ReadFile(store.path)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -40,8 +37,8 @@ func (store FileStore) Load() (Credentials, error) {
 }
 
 // Принимает: credentials — данные для сохранения.
-// Делает: пишет файл атомарно (временный файл и переименование) с правами 0600, чтобы обрыв не оставил полузаписанные токены.
-// Возвращает: nil либо ошибку записи.
+// Делает: пишет файл атомарно (временный файл и rename) с правами 0600, чтобы обрыв не оставил полузаписанные токены.
+// Возвращает: nil или ошибку записи.
 func (store FileStore) Save(credentials Credentials) error {
 	directory := filepath.Dir(store.path)
 	if err := os.MkdirAll(directory, 0o700); err != nil {

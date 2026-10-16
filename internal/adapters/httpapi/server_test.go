@@ -17,7 +17,6 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/ports"
 )
 
-// stubService запоминает переданные адаптером аргументы и возвращает заготовленные результаты.
 type stubService struct {
 	created    ports.CreateInput
 	filter     ports.ListFilter
@@ -29,9 +28,6 @@ type stubService struct {
 	err        error
 }
 
-// Принимает: id — идентификатор, owner — владелец, kopecks — сумма, category — категория, day — день в формате YYYY-MM-DD.
-// Делает: собирает валидный доменный расход через Restore, при ошибке валит тест.
-// Возвращает: domain.Expense.
 func makeExpense(t *testing.T, id int64, owner int64, kopecks int64, category domain.Category, day string) domain.Expense {
 	t.Helper()
 	item, err := domain.Restore(domain.Snapshot{ID: domain.ExpenseID(id), Owner: domaintest.UserID(t, owner), Amount: domaintest.Money(t, kopecks), Category: category, SpentOn: domaintest.Day(t, day)})
@@ -41,9 +37,6 @@ func makeExpense(t *testing.T, id int64, owner int64, kopecks int64, category do
 	return item
 }
 
-// Принимает: второй параметр (контекст) не используется, input — данные создаваемого расхода.
-// Делает: сохраняет input в stub.created; для неположительной суммы возвращает ErrInvalidAmount, как сервис.
-// Возвращает: расход с ID 1 и фиксированным днём 2026-03-05, а также stub.err.
 func (stub *stubService) Create(_ context.Context, input ports.CreateInput) (domain.Expense, error) {
 	stub.created = input
 	if !input.Amount.IsPositive() {
@@ -57,24 +50,15 @@ func (stub *stubService) Create(_ context.Context, input ports.CreateInput) (dom
 	return item, stub.err
 }
 
-// Принимает: второй параметр (контекст) не используется, filter — фильтр списка.
-// Делает: сохраняет filter в stub.filter.
-// Возвращает: stub.listResult и stub.err.
 func (stub *stubService) List(_ context.Context, filter ports.ListFilter) ([]domain.Expense, error) {
 	stub.filter = filter
 	return stub.listResult, stub.err
 }
 
-// Принимает: контекст не используется.
-// Делает: отдаёт заготовленный список пользователей.
-// Возвращает: stub.userIDs и stub.err.
 func (stub *stubService) ListUserIDs(context.Context) ([]domain.UserID, error) {
 	return stub.userIDs, stub.err
 }
 
-// Принимает: второй параметр (контекст) не используется, id — идентификатор, changes — изменения.
-// Делает: запоминает id и changes в stub.
-// Возвращает: фиксированный расход с этим id и stub.err.
 func (stub *stubService) Update(_ context.Context, id domain.ExpenseID, changes domain.Changes) (domain.Expense, error) {
 	stub.patchedID, stub.changes = id, changes
 	owner, _ := domain.NewUserID(7)
@@ -87,17 +71,11 @@ func (stub *stubService) Update(_ context.Context, id domain.ExpenseID, changes 
 	return item, stub.err
 }
 
-// Принимает: второй параметр (контекст) не используется, id — идентификатор.
-// Делает: запоминает id в stub.deletedID.
-// Возвращает: stub.err.
 func (stub *stubService) Delete(_ context.Context, id domain.ExpenseID) error {
 	stub.deletedID = id
 	return stub.err
 }
 
-// Принимает: t — тестовый контекст, stub — подставной сервис, method, target, body — метод, URL и тело запроса.
-// Делает: собирает Server поверх stub и прогоняет через его Handler запрос с httptest.
-// Возвращает: записанный ответ *httptest.ResponseRecorder.
 func do(t *testing.T, stub *stubService, method, target, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	handler := httpapi.NewServer(stub, slog.New(slog.NewTextHandler(io.Discard, nil))).Handler()
@@ -107,9 +85,6 @@ func do(t *testing.T, stub *stubService, method, target, body string) *httptest.
 	return recorder
 }
 
-// Принимает: t — тестовый контекст, recorder — записанный ответ.
-// Делает: разбирает тело ответа как JSON в тип T, при ошибке валит тест через t.Fatalf.
-// Возвращает: значение типа T.
 func decode[T any](t *testing.T, recorder *httptest.ResponseRecorder) T {
 	t.Helper()
 	var value T
@@ -119,9 +94,7 @@ func decode[T any](t *testing.T, recorder *httptest.ResponseRecorder) T {
 	return value
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: что POST /api/expenses передаёт поля в сервис и возвращает 201 с датой и подписью категории.
-// Возвращает: ничего.
+// Проверяет: POST /api/expenses передаёт поля в сервис и возвращает 201 с датой и подписью категории.
 func TestCreateExpense(t *testing.T) {
 	stub := &stubService{}
 	recorder := do(t, stub, http.MethodPost, "/api/expenses",
@@ -139,9 +112,7 @@ func TestCreateExpense(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: что без spent_at адаптер передаёт nil-день, чтобы сервис подставил сегодняшний.
-// Возвращает: ничего.
+// Проверяет: без spent_at адаптер передаёт nil-день, чтобы сервис подставил сегодняшний.
 func TestCreateExpenseWithoutDateLeavesDefaultingToService(t *testing.T) {
 	stub := &stubService{}
 	recorder := do(t, stub, http.MethodPost, "/api/expenses", `{"user_id":7,"amount":100,"category":"other"}`)
@@ -154,9 +125,7 @@ func TestCreateExpenseWithoutDateLeavesDefaultingToService(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: что query-параметры user_id, category, from и to попадают в фильтр сервиса, а ответ содержит элементы.
-// Возвращает: ничего.
+// Проверяет: query-параметры user_id, category, from и to попадают в фильтр сервиса, а ответ содержит элементы.
 func TestListExpensesPassesFilters(t *testing.T) {
 	stub := &stubService{listResult: []domain.Expense{makeExpense(t, 3, 7, 100, domain.CategoryHealth, "2026-03-01")}}
 	recorder := do(t, stub, http.MethodGet, "/api/expenses?user_id=7&category=health&from=2026-03-01&to=2026-03-31", "")
@@ -179,9 +148,7 @@ func TestListExpensesPassesFilters(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: что пустой результат сериализуется как items:[], а не null.
-// Возвращает: ничего.
+// Проверяет: пустой результат сериализуется как items:[], а не null.
 func TestListExpensesReturnsEmptyArrayNotNull(t *testing.T) {
 	recorder := do(t, &stubService{}, http.MethodGet, "/api/expenses", "")
 
@@ -190,9 +157,7 @@ func TestListExpensesReturnsEmptyArrayNotNull(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: что PATCH строит patch только из переданных полей, включая явную пустую строку комментария.
-// Возвращает: ничего.
+// Проверяет: PATCH строит patch только из переданных полей, включая явную пустую строку комментария.
 func TestUpdateExpenseBuildsPartialPatch(t *testing.T) {
 	stub := &stubService{}
 	recorder := do(t, stub, http.MethodPatch, "/api/expenses/12", `{"amount":450,"comment":""}`)
@@ -214,9 +179,7 @@ func TestUpdateExpenseBuildsPartialPatch(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: что DELETE возвращает 204 и передаёт в сервис верный id.
-// Возвращает: ничего.
+// Проверяет: DELETE возвращает 204 и передаёт в сервис верный id.
 func TestDeleteExpense(t *testing.T) {
 	stub := &stubService{}
 	recorder := do(t, stub, http.MethodDelete, "/api/expenses/9", "")
@@ -226,9 +189,7 @@ func TestDeleteExpense(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: форму ответов /api/users и /api/categories.
-// Возвращает: ничего.
+// Проверяет: форму ответов /api/users и /api/categories.
 func TestListUsersAndCategories(t *testing.T) {
 	users := do(t, &stubService{userIDs: []domain.UserID{domaintest.UserID(t, 1), domaintest.UserID(t, 2)}}, http.MethodGet, "/api/users", "")
 	if got := strings.TrimSpace(users.Body.String()); got != `{"items":[{"user_id":1},{"user_id":2}]}` {
@@ -241,9 +202,7 @@ func TestListUsersAndCategories(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: таблицей, что ошибки сервиса и разбора запроса превращаются в нужные статус и код, а внутренние детали не утекают в 500.
-// Возвращает: ничего.
+// Проверяет: ошибки сервиса и разбора запроса превращаются в нужные статус и код, а внутренние детали не утекают в 500.
 func TestErrorMapping(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -296,9 +255,7 @@ func TestErrorMapping(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: что /healthz отвечает 200.
-// Возвращает: ничего.
+// Проверяет: /healthz отвечает 200.
 func TestHealth(t *testing.T) {
 	recorder := do(t, &stubService{}, http.MethodGet, "/healthz", "")
 

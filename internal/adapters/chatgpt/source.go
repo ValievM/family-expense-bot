@@ -17,7 +17,7 @@ type Store interface {
 	Save(credentials Credentials) error
 }
 
-// TokenSource выдаёт актуальный токен доступа и сам обновляет его; одновременные обновления выполняются по очереди, чтобы не потерять вращаемый токен.
+// TokenSource выдаёт актуальный токен и сам его обновляет; обновления идут по очереди, чтобы не потерять вращаемый токен.
 type TokenSource struct {
 	mutex       sync.Mutex
 	store       Store
@@ -26,16 +26,13 @@ type TokenSource struct {
 	loaded      bool
 }
 
-// Принимает: store — хранилище; oauth — клиент сервера авторизации.
-// Делает: создаёт источник; файл читается лениво при первом запросе токена.
-// Возвращает: TokenSource.
 func NewTokenSource(store Store, oauth *OAuth) *TokenSource {
 	return &TokenSource{store: store, oauth: oauth}
 }
 
 // Принимает: ctx — контекст запроса.
-// Делает: читает данные при первом вызове, обновляет токен, если он скоро истечёт, и сохраняет новую пару до выдачи.
-// Возвращает: токен доступа, ErrNotLoggedIn, ErrReauthRequired при отозванном токене обновления либо ошибку сети.
+// Делает: читает данные при первом вызове, обновляет скоро истекающий токен и сохраняет новую пару до выдачи.
+// Возвращает: токен доступа, ErrNotLoggedIn, ErrReauthRequired или ошибку сети.
 func (source *TokenSource) Token(ctx context.Context) (string, error) {
 	source.mutex.Lock()
 	defer source.mutex.Unlock()
@@ -69,9 +66,9 @@ func (source *TokenSource) Token(ctx context.Context) (string, error) {
 	return refreshed.AccessToken, nil
 }
 
-// Принимает: ctx — контекст запроса; request — исходящий запрос к API.
-// Делает: подставляет актуальный токен в заголовок Authorization; реализует интерфейс Authorizer клиента LLM.
-// Возвращает: nil либо ошибку получения токена.
+// Принимает: ctx; request — исходящий запрос к API.
+// Делает: подставляет актуальный токен в Authorization (реализует Authorizer клиента LLM).
+// Возвращает: nil или ошибку получения токена.
 func (source *TokenSource) Authorize(ctx context.Context, request *http.Request) error {
 	token, err := source.Token(ctx)
 	if err != nil {

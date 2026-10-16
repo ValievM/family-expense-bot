@@ -7,7 +7,7 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/ports"
 )
 
-// expenseResponse — JSON-представление расхода, Amount в копейках.
+// expenseResponse — Amount в копейках.
 type expenseResponse struct {
 	ID            int64     `json:"id"`
 	UserID        int64     `json:"user_id"`
@@ -20,23 +20,20 @@ type expenseResponse struct {
 	UpdatedAt     time.Time `json:"updated_at"`
 }
 
-// categoryResponse — JSON-представление категории: ключ и подпись.
 type categoryResponse struct {
 	Key   string `json:"key"`
 	Label string `json:"label"`
 }
 
-// userResponse — JSON-представление пользователя.
 type userResponse struct {
 	UserID int64 `json:"user_id"`
 }
 
-// listResponse — JSON-обёртка списка с полем items.
 type listResponse[T any] struct {
 	Items []T `json:"items"`
 }
 
-// createExpenseRequest — тело POST /api/expenses; Amount в копейках.
+// createExpenseRequest — Amount в копейках.
 type createExpenseRequest struct {
 	UserID   int64   `json:"user_id"`
 	Amount   int64   `json:"amount"`
@@ -45,7 +42,7 @@ type createExpenseRequest struct {
 	Comment  string  `json:"comment"`
 }
 
-// updateExpenseRequest использует указатели, чтобы отличать отсутствующее поле от явного нулевого значения.
+// updateExpenseRequest: указатели отличают отсутствующее поле от нулевого значения.
 type updateExpenseRequest struct {
 	Amount   *int64  `json:"amount"`
 	Category *string `json:"category"`
@@ -54,7 +51,7 @@ type updateExpenseRequest struct {
 }
 
 // Принимает: item — доменный расход.
-// Делает: переводит расход в JSON-представление через геттеры; категорию превращает в ключ и подпись, день — в YYYY-MM-DD.
+// Делает: собирает JSON-представление; категорию отдаёт ключом и подписью, день — как YYYY-MM-DD.
 // Возвращает: expenseResponse.
 func toResponse(item domain.Expense) expenseResponse {
 	return expenseResponse{
@@ -72,7 +69,7 @@ func toResponse(item domain.Expense) expenseResponse {
 
 // Принимает: ничего.
 // Делает: переводит поля запроса в доменные значения валидирующими конструкторами.
-// Возвращает: ports.CreateInput либо доменную ошибку или requestError invalid_date.
+// Возвращает: ports.CreateInput, доменную ошибку или requestError invalid_date.
 func (request createExpenseRequest) toInput() (ports.CreateInput, error) {
 	var input ports.CreateInput
 	owner, err := domain.NewUserID(request.UserID)
@@ -99,8 +96,8 @@ func (request createExpenseRequest) toInput() (ports.CreateInput, error) {
 }
 
 // Принимает: ничего.
-// Делает: переводит только переданные поля запроса в domain.Changes; пустой комментарий считается явным значением.
-// Возвращает: domain.Changes либо доменную ошибку или requestError invalid_date.
+// Делает: переводит в domain.Changes только переданные поля; пустой комментарий — явное значение.
+// Возвращает: domain.Changes, доменную ошибку или requestError invalid_date.
 func (request updateExpenseRequest) toChanges() (domain.Changes, error) {
 	var changes domain.Changes
 	if request.Amount != nil {

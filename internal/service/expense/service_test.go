@@ -14,32 +14,20 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/service/expense"
 )
 
-// fakeClock — часы с заданным временем.
 type fakeClock struct{ now time.Time }
 
-// Принимает: ничего.
-// Делает: отдаёт зафиксированное время.
-// Возвращает: время из теста.
 func (clock *fakeClock) Now() time.Time { return clock.now }
 
-// fakeRepository — реализация ports.ExpenseRepository в памяти; считает вызовы записи.
-// ( расходов в памяти; считает вызовы записи.
 type fakeRepository struct {
 	records map[domain.ExpenseID]domain.Expense
 	nextID  domain.ExpenseID
 	writes  int
 }
 
-// Принимает: ничего.
-// Делает: создаёт пустое хранилище.
-// Возвращает: указатель на хранилище.
 func newFakeRepository() *fakeRepository {
 	return &fakeRepository{records: make(map[domain.ExpenseID]domain.Expense)}
 }
 
-// Принимает: _ — контекст не используется; expense — расход без ID.
-// Делает: присваивает следующий ID и сохраняет.
-// Возвращает: сохранённый расход и nil.
 func (repository *fakeRepository) Create(_ context.Context, item domain.Expense) (domain.Expense, error) {
 	repository.nextID++
 	repository.writes++
@@ -48,9 +36,6 @@ func (repository *fakeRepository) Create(_ context.Context, item domain.Expense)
 	return item, nil
 }
 
-// Принимает: _ — контекст не используется; id — идентификатор.
-// Делает: читает расход.
-// Возвращает: расход либо ports.ErrNotFound.
 func (repository *fakeRepository) Get(_ context.Context, id domain.ExpenseID) (domain.Expense, error) {
 	item, found := repository.records[id]
 	if !found {
@@ -59,9 +44,6 @@ func (repository *fakeRepository) Get(_ context.Context, id domain.ExpenseID) (d
 	return item, nil
 }
 
-// Принимает: _ — контекст не используется; filter — фильтры.
-// Делает: отбирает по владельцу, категории и включительному периоду и сортирует по дню и ID по убыванию.
-// Возвращает: расходы и nil.
 func (repository *fakeRepository) List(_ context.Context, filter ports.ListFilter) ([]domain.Expense, error) {
 	items := make([]domain.Expense, 0, len(repository.records))
 	for _, item := range repository.records {
@@ -88,9 +70,6 @@ func (repository *fakeRepository) List(_ context.Context, filter ports.ListFilte
 	return items, nil
 }
 
-// Принимает: _ — контекст не используется.
-// Делает: собирает уникальных владельцев.
-// Возвращает: ID по возрастанию и nil.
 func (repository *fakeRepository) ListUserIDs(_ context.Context) ([]domain.UserID, error) {
 	seen := make(map[domain.UserID]struct{})
 	userIDs := make([]domain.UserID, 0)
@@ -104,9 +83,6 @@ func (repository *fakeRepository) ListUserIDs(_ context.Context) ([]domain.UserI
 	return userIDs, nil
 }
 
-// Принимает: _ — контекст не используется; item — расход с ID.
-// Делает: заменяет сохранённый расход.
-// Возвращает: новый расход либо ports.ErrNotFound.
 func (repository *fakeRepository) Update(_ context.Context, item domain.Expense) (domain.Expense, error) {
 	if _, found := repository.records[item.ID()]; !found {
 		return domain.Expense{}, ports.ErrNotFound
@@ -116,9 +92,6 @@ func (repository *fakeRepository) Update(_ context.Context, item domain.Expense)
 	return item, nil
 }
 
-// Принимает: _ — контекст не используется; id — идентификатор.
-// Делает: удаляет расход.
-// Возвращает: nil либо ports.ErrNotFound.
 func (repository *fakeRepository) Delete(_ context.Context, id domain.ExpenseID) error {
 	if _, found := repository.records[id]; !found {
 		return ports.ErrNotFound
@@ -128,26 +101,17 @@ func (repository *fakeRepository) Delete(_ context.Context, id domain.ExpenseID)
 	return nil
 }
 
-// Принимает: t — тестовый контекст; value — день YYYY-MM-DD.
-// Делает: разбирает день через domaintest.Day.
-// Возвращает: указатель на Day.
 func dayPtr(t *testing.T, value string) *domain.Day {
 	t.Helper()
 	parsed := domaintest.Day(t, value)
 	return &parsed
 }
 
-// Принимает: t — тестовый контекст; owner — владелец; kopecks — сумма.
-// Делает: собирает корректный вход создания на 2 января 2026.
-// Возвращает: ports.CreateInput.
 func input(t *testing.T, owner int64, kopecks int64) ports.CreateInput {
 	t.Helper()
 	return ports.CreateInput{Owner: domaintest.UserID(t, owner), Amount: domaintest.Money(t, kopecks), Category: domain.CategoryFood, SpentOn: dayPtr(t, "2026-01-02")}
 }
 
-// Принимает: t — тестовый контекст; now — время часов.
-// Делает: собирает сервис с хранилищем в памяти и UTC.
-// Возвращает: сервис и хранилище.
 func newService(t *testing.T, now time.Time) (*expense.Service, *fakeRepository) {
 	t.Helper()
 	repository := newFakeRepository()
@@ -156,9 +120,7 @@ func newService(t *testing.T, now time.Time) (*expense.Service, *fakeRepository)
 
 var now = time.Date(2026, time.January, 2, 15, 4, 5, 0, time.UTC)
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что время создания и изменения берётся из часов сервиса.
-// Возвращает: ничего.
+// Проверяет: время создания и изменения берётся из часов сервиса.
 func TestCreateStampsTimestampsFromClock(t *testing.T) {
 	service, _ := newService(t, now)
 
@@ -172,9 +134,7 @@ func TestCreateStampsTimestampsFromClock(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что пропущенный день означает «сегодня» в часовом поясе сервиса, а не в UTC.
-// Возвращает: ничего.
+// Проверяет: пропущенный день означает «сегодня» в часовом поясе сервиса, а не в UTC.
 func TestCreateDefaultsOmittedDayToTodayInConfiguredLocation(t *testing.T) {
 	moscow := time.FixedZone("UTC+03", 3*60*60)
 	// 22:30 UTC первого января уже второе января в Москве.
@@ -193,9 +153,7 @@ func TestCreateDefaultsOmittedDayToTodayInConfiguredLocation(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что нарушение инварианта не доходит до хранилища.
-// Возвращает: ничего.
+// Проверяет: нарушение инварианта не доходит до хранилища.
 func TestCreateRejectsInvalidExpenseWithoutPersistence(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -223,9 +181,7 @@ func TestCreateRejectsInvalidExpenseWithoutPersistence(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет частичное обновление: меняются заданные поля, время изменения берётся из часов, остальное сохраняется.
-// Возвращает: ничего.
+// Проверяет: частичное обновление: меняются заданные поля, время изменения берётся из часов, остальное сохраняется.
 func TestUpdateMergesChangesAndStampsUpdateTime(t *testing.T) {
 	service, repository := newService(t, now)
 	created, _ := service.Create(context.Background(), input(t, 7, 100))
@@ -247,9 +203,7 @@ func TestUpdateMergesChangesAndStampsUpdateTime(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что изменение, нарушающее инвариант, отклоняется доменом и не сохраняется.
-// Возвращает: ничего.
+// Проверяет: изменение, нарушающее инвариант, отклоняется доменом и не сохраняется.
 func TestUpdateRejectsInvalidResultWithoutPersistence(t *testing.T) {
 	service, repository := newService(t, now)
 	created, _ := service.Create(context.Background(), input(t, 7, 100))
@@ -266,9 +220,7 @@ func TestUpdateRejectsInvalidResultWithoutPersistence(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что область пользователя не читает, не меняет и не удаляет чужие расходы, а ответ неотличим от «не найдено».
-// Возвращает: ничего.
+// Проверяет: область пользователя не читает, не меняет и не удаляет чужие расходы, а ответ неотличим от «не найдено».
 func TestUserExpensesCannotReadOrChangeForeignExpenses(t *testing.T) {
 	service, repository := newService(t, now)
 	foreign, _ := service.Create(context.Background(), input(t, 8, 900))
@@ -289,9 +241,7 @@ func TestUserExpensesCannotReadOrChangeForeignExpenses(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что создание и список в области пользователя всегда привязаны к владельцу области, даже если в фильтре указан другой.
-// Возвращает: ничего.
+// Проверяет: создание и список в области пользователя всегда привязаны к владельцу области, даже если в фильтре указан другой.
 func TestUserExpensesCreateAndListBindOwner(t *testing.T) {
 	service, _ := newService(t, now)
 	_, _ = service.Create(context.Background(), input(t, 8, 900))
@@ -315,9 +265,7 @@ func TestUserExpensesCreateAndListBindOwner(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что обновление в области пользователя сохраняет владельца и время создания.
-// Возвращает: ничего.
+// Проверяет: обновление в области пользователя сохраняет владельца и время создания.
 func TestUserExpensesUpdatePreservesOwnerAndCreationTime(t *testing.T) {
 	service, repository := newService(t, now)
 	scope := service.ForUser(domaintest.UserID(t, 7))
@@ -335,9 +283,7 @@ func TestUserExpensesUpdatePreservesOwnerAndCreationTime(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет отказ нулевой области (ForUser с нулевым владельцем) на каждой операции.
-// Возвращает: ничего.
+// Проверяет: отказ нулевой области (ForUser с нулевым владельцем) на каждой операции.
 func TestZeroScopeIsRejected(t *testing.T) {
 	service, _ := newService(t, now)
 	scope := service.ForUser(domain.UserID{})
@@ -350,9 +296,7 @@ func TestZeroScopeIsRejected(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет фильтры списка: период включает границы, категория отбирает, порядок «новые сверху».
-// Возвращает: ничего.
+// Проверяет: фильтры списка: период включает границы, категория отбирает, порядок «новые сверху».
 func TestListFiltersByInclusivePeriodAndCategory(t *testing.T) {
 	service, _ := newService(t, now)
 	for _, date := range []string{"2026-01-01", "2026-01-02", "2026-01-03", "2026-01-04"} {
@@ -378,9 +322,7 @@ func TestListFiltersByInclusivePeriodAndCategory(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет отказ на перевёрнутом периоде и неизвестной категории до обращения к хранилищу.
-// Возвращает: ничего.
+// Проверяет: отказ на перевёрнутом периоде и неизвестной категории до обращения к хранилищу.
 func TestListRejectsInvalidFilters(t *testing.T) {
 	service, _ := newService(t, now)
 	unknown := domain.Category("pets")
@@ -393,9 +335,7 @@ func TestListRejectsInvalidFilters(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет список владельцев: уникальные, по возрастанию.
-// Возвращает: ничего.
+// Проверяет: список владельцев: уникальные, по возрастанию.
 func TestListUserIDsReturnsUniqueOwners(t *testing.T) {
 	service, _ := newService(t, now)
 	for _, owner := range []int64{9, 7, 9, 8} {

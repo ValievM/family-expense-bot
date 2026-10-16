@@ -38,9 +38,6 @@ const (
 	shutdownTimeout = 10 * time.Second
 )
 
-// Принимает: ничего.
-// Делает: запускает приложение и превращает ошибку запуска в код возврата процесса.
-// Возвращает: ничего.
 func main() {
 	if err := run(); err != nil {
 		slog.Error("server stopped with an error", "error", err)
@@ -49,8 +46,8 @@ func main() {
 }
 
 // Принимает: ничего.
-// Делает: читает конфигурацию, готовит базу, собирает сервис, API и бота, работает до сигнала остановки и затем гасит всё по порядку.
-// Возвращает: nil при штатной остановке либо первую ошибку запуска или работы.
+// Делает: читает конфиг, готовит базу, собирает сервис, API и бота, работает до сигнала и гасит всё по порядку.
+// Возвращает: nil при штатной остановке или первую ошибку запуска либо работы.
 func run() error {
 	cfg, err := config.Load(os.Getenv)
 	if err != nil {
@@ -123,9 +120,9 @@ func run() error {
 	return runErr
 }
 
-// Принимает: ctx — контекст остановки; databaseURL — строка подключения к PostgreSQL.
-// Делает: открывает пул, ждёт готовности базы до databaseWait и применяет встроенные миграции.
-// Возвращает: готовый пул либо ошибку подключения или миграции.
+// Принимает: ctx — контекст остановки; databaseURL — строка подключения.
+// Делает: открывает пул, ждёт базу до databaseWait, применяет встроенные миграции.
+// Возвращает: пул или ошибку подключения либо миграции.
 func connectDatabase(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 	pool, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
@@ -146,8 +143,8 @@ func connectDatabase(ctx context.Context, databaseURL string) (*pgxpool.Pool, er
 }
 
 // Принимает: ctx — контекст остановки; pool — пул соединений.
-// Делает: раз в секунду проверяет доступность базы, пока не истечёт databaseWait.
-// Возвращает: nil, когда база ответила, либо последнюю ошибку проверки.
+// Делает: раз в секунду пингует базу, пока не истечёт databaseWait.
+// Возвращает: nil, когда база ответила, или последнюю ошибку проверки.
 func waitForDatabase(ctx context.Context, pool *pgxpool.Pool) error {
 	deadline := time.Now().Add(databaseWait)
 	for {
@@ -166,9 +163,9 @@ func waitForDatabase(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 }
 
-// Принимает: cfg — конфигурация; service — сервис трат; clock — часы; logger — логгер.
-// Делает: собирает цепочку LLM-клиент, агент, Telegram-бот; агенту выдаётся только фабрика трат, привязанных к автору сообщения.
-// Возвращает: готового бота либо ошибку, если выбран вход через ChatGPT, а входа ещё не было.
+// Принимает: cfg; service — сервис трат; clock; logger.
+// Делает: собирает LLM-клиент, агент и бота; агенту выдаётся только фабрика трат, привязанных к автору сообщения.
+// Возвращает: бота или ошибку, если выбран вход через ChatGPT, а входа ещё не было.
 func newBot(cfg config.Config, service *expense.Service, clock ports.Clock, logger *slog.Logger) (*telegram.Bot, error) {
 	model, err := newLLM(cfg)
 	if err != nil {
@@ -180,8 +177,8 @@ func newBot(cfg config.Config, service *expense.Service, clock ports.Clock, logg
 }
 
 // Принимает: cfg — конфигурация с режимом LLM_AUTH.
-// Делает: выбирает способ доступа к модели: ключ API через Chat Completions или вход через ChatGPT через Responses API; при втором проверяет, что вход уже выполнен.
-// Возвращает: реализацию ports.LLM либо ошибку (например, chatgpt.ErrNotLoggedIn).
+// Делает: выбирает ключ API (Chat Completions) или вход через ChatGPT (Responses API); во втором проверяет наличие входа.
+// Возвращает: ports.LLM или ошибку, например chatgpt.ErrNotLoggedIn.
 func newLLM(cfg config.Config) (ports.LLM, error) {
 	if cfg.LLMAuth != config.AuthOAuth {
 		return llm.NewClient(cfg.LLMBaseURL, cfg.LLMModel, llm.NewAPIKeyAuthorizer(cfg.LLMAPIKey)), nil

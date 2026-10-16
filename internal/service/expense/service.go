@@ -1,4 +1,4 @@
-// Package expense — сценарии работы с расходами (слой приложения): создание, чтение, изменение, удаление и привязка к владельцу.
+// Package expense — сценарии работы с расходами (слой приложения).
 package expense
 
 import (
@@ -10,20 +10,19 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/ports"
 )
 
-// Проверки на этапе компиляции: сервис реализует входящий порт панели, а область — входящий порт агента.
 var (
 	_ ports.ExpenseService = (*Service)(nil)
 	_ ports.UserExpenses   = UserExpenses{}
 )
 
-// Service координирует сценарии над агрегатом Expense; сами инварианты проверяет домен.
+// Service координирует сценарии над агрегатом; инварианты проверяет домен.
 type Service struct {
 	repository ports.ExpenseRepository
 	clock      ports.Clock
 	location   *time.Location
 }
 
-// Принимает: repository — хранилище; clock — часы (обязательны); location — часовой пояс «сегодня», nil означает UTC.
+// Принимает: repository, clock (обязательны); location — пояс «сегодня», nil = UTC.
 // Делает: собирает сервис.
 // Возвращает: готовый *Service.
 func NewService(repository ports.ExpenseRepository, clock ports.Clock, location *time.Location) *Service {
@@ -34,14 +33,14 @@ func NewService(repository ports.ExpenseRepository, clock ports.Clock, location 
 }
 
 // Принимает: owner — владелец данных.
-// Делает: возвращает область, методы которой не позволяют выбрать другого владельца.
-// Возвращает: UserExpenses, привязанный к owner.
+// Делает: сужает сервис до трат одного владельца.
+// Возвращает: UserExpenses без возможности выбрать другого владельца.
 func (service *Service) ForUser(owner domain.UserID) UserExpenses {
 	return UserExpenses{service: service, owner: owner}
 }
 
-// Принимает: ctx — контекст; input — данные создания.
-// Делает: подставляет «сегодня» (в часовом поясе сервиса) вместо пустого дня, создаёт агрегат через конструктор и сохраняет его.
+// Принимает: ctx; input — данные создания.
+// Делает: подставляет «сегодня» вместо пустого дня, создаёт агрегат и сохраняет.
 // Возвращает: сохранённый расход либо доменную ошибку или ошибку хранилища.
 func (service *Service) Create(ctx context.Context, input ports.CreateInput) (domain.Expense, error) {
 	now := service.clock.Now().UTC()
@@ -65,8 +64,8 @@ func (service *Service) Create(ctx context.Context, input ports.CreateInput) (do
 	return created, nil
 }
 
-// Принимает: ctx — контекст; id — идентификатор расхода.
-// Делает: читает расход без ограничения по владельцу (для панели главы семьи).
+// Принимает: ctx; id — идентификатор.
+// Делает: читает расход без ограничения по владельцу (панель главы семьи).
 // Возвращает: расход либо ErrNotFound.
 func (service *Service) Get(ctx context.Context, id domain.ExpenseID) (domain.Expense, error) {
 	expense, err := service.repository.Get(ctx, id)
@@ -76,9 +75,9 @@ func (service *Service) Get(ctx context.Context, id domain.ExpenseID) (domain.Ex
 	return expense, nil
 }
 
-// Принимает: ctx — контекст; filter — фильтры.
-// Делает: проверяет период и категорию и читает список.
-// Возвращает: расходы либо ports.ErrInvalidPeriod, ErrUnknownCategory или ошибку хранилища.
+// Принимает: ctx; filter — фильтры.
+// Делает: проверяет период и категорию, читает список.
+// Возвращает: расходы либо ErrInvalidPeriod, ErrUnknownCategory или ошибку хранилища.
 func (service *Service) List(ctx context.Context, filter ports.ListFilter) ([]domain.Expense, error) {
 	if filter.Category != nil && !filter.Category.IsValid() {
 		return nil, domain.ErrUnknownCategory
@@ -93,9 +92,6 @@ func (service *Service) List(ctx context.Context, filter ports.ListFilter) ([]do
 	return expenses, nil
 }
 
-// Принимает: ctx — контекст.
-// Делает: читает владельцев, у которых есть расходы.
-// Возвращает: ID по возрастанию либо ошибку хранилища.
 func (service *Service) ListUserIDs(ctx context.Context) ([]domain.UserID, error) {
 	userIDs, err := service.repository.ListUserIDs(ctx)
 	if err != nil {
@@ -104,8 +100,8 @@ func (service *Service) ListUserIDs(ctx context.Context) ([]domain.UserID, error
 	return userIDs, nil
 }
 
-// Принимает: ctx — контекст; id — идентификатор; changes — изменяемые поля.
-// Делает: читает расход, применяет изменения методом агрегата (он проверяет инварианты целиком) и сохраняет.
+// Принимает: ctx; id; changes — изменяемые поля.
+// Делает: применяет изменения методом агрегата и сохраняет.
 // Возвращает: обновлённый расход либо ErrNotFound, доменную ошибку или ошибку хранилища.
 func (service *Service) Update(ctx context.Context, id domain.ExpenseID, changes domain.Changes) (domain.Expense, error) {
 	current, err := service.Get(ctx, id)
@@ -115,7 +111,7 @@ func (service *Service) Update(ctx context.Context, id domain.ExpenseID, changes
 	return service.apply(ctx, current, changes)
 }
 
-// Принимает: ctx — контекст; id — идентификатор расхода.
+// Принимает: ctx; id.
 // Делает: удаляет расход без ограничения по владельцу.
 // Возвращает: nil либо ErrNotFound.
 func (service *Service) Delete(ctx context.Context, id domain.ExpenseID) error {
@@ -125,8 +121,8 @@ func (service *Service) Delete(ctx context.Context, id domain.ExpenseID) error {
 	return nil
 }
 
-// Принимает: ctx — контекст; owner — владелец; id — идентификатор расхода.
-// Делает: читает расход и проверяет принадлежность правилом домена; чужой расход неотличим от несуществующего.
+// Принимает: ctx; owner; id.
+// Делает: читает расход и проверяет принадлежность; чужой неотличим от несуществующего.
 // Возвращает: расход либо ErrNotFound.
 func (service *Service) getOwned(ctx context.Context, owner domain.UserID, id domain.ExpenseID) (domain.Expense, error) {
 	expense, err := service.Get(ctx, id)
@@ -139,8 +135,8 @@ func (service *Service) getOwned(ctx context.Context, owner domain.UserID, id do
 	return expense, nil
 }
 
-// Принимает: ctx — контекст; current — текущий расход; changes — изменения.
-// Делает: применяет изменения в агрегате с текущим временем и сохраняет результат.
+// Принимает: ctx; current — текущий расход; changes.
+// Делает: применяет изменения с текущим временем и сохраняет.
 // Возвращает: сохранённый расход либо доменную ошибку или ошибку хранилища.
 func (service *Service) apply(ctx context.Context, current domain.Expense, changes domain.Changes) (domain.Expense, error) {
 	updated, err := current.Apply(changes, service.clock.Now().UTC())

@@ -15,13 +15,11 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/ports"
 )
 
-// sentMessage — сообщение, отправленное ботом через фейковый шлюз.
 type sentMessage struct {
 	chatID int64
 	text   string
 }
 
-// fakeGateway отдаёт заготовленные обновления один раз, затем блокируется до остановки, как настоящий long polling.
 type fakeGateway struct {
 	mutex   sync.Mutex
 	batches [][]telegram.Update
@@ -29,16 +27,10 @@ type fakeGateway struct {
 	offsets []int64
 }
 
-// Принимает: batches — пачки обновлений по очереди.
-// Делает: создаёт шлюз с каналом для отправленных сообщений.
-// Возвращает: указатель на шлюз.
 func newFakeGateway(batches ...[]telegram.Update) *fakeGateway {
 	return &fakeGateway{batches: batches, sent: make(chan sentMessage, 16)}
 }
 
-// Принимает: ctx — контекст остановки; offset — смещение бота; _ — срок не используется.
-// Делает: запоминает offset и отдаёт следующую пачку либо ждёт отмены контекста.
-// Возвращает: пачку обновлений либо ошибку контекста.
 func (gateway *fakeGateway) GetUpdates(ctx context.Context, offset int64, _ int) ([]telegram.Update, error) {
 	gateway.mutex.Lock()
 	gateway.offsets = append(gateway.offsets, offset)
@@ -53,49 +45,29 @@ func (gateway *fakeGateway) GetUpdates(ctx context.Context, offset int64, _ int)
 	return nil, ctx.Err()
 }
 
-// Принимает: _ — контекст не используется; chatID — получатель; text — текст.
-// Делает: складывает сообщение в канал для проверки.
-// Возвращает: nil.
 func (gateway *fakeGateway) SendMessage(_ context.Context, chatID int64, text string) error {
 	gateway.sent <- sentMessage{chatID: chatID, text: text}
 	return nil
 }
 
-// Принимает: _ — контекст не используется; _ — чат не используется.
-// Делает: ничего, индикатор набора в тестах не важен.
-// Возвращает: nil.
 func (gateway *fakeGateway) SendTyping(context.Context, int64) error { return nil }
 
-// responderFunc позволяет задать обработчик функцией.
 type responderFunc func(ctx context.Context, userID int64, text string) (string, error)
 
-// Принимает: ctx — контекст; userID — автор; text — текст.
-// Делает: вызывает функцию.
-// Возвращает: её результат.
 func (fn responderFunc) Handle(ctx context.Context, userID int64, text string) (string, error) {
 	return fn(ctx, userID, text)
 }
 
-// allowList разрешает только перечисленных пользователей.
 type allowList map[int64]bool
 
-// Принимает: userID — автор.
-// Делает: ищет автора в списке.
-// Возвращает: true, если разрешён.
 func (list allowList) IsUserAllowed(userID int64) bool { return list[userID] }
 
-// Принимает: userID — автор; chatType — тип чата; text — текст.
-// Делает: собирает обновление с сообщением.
-// Возвращает: Update.
 func textUpdate(id, userID int64, chatType, text string) telegram.Update {
 	return telegram.Update{UpdateID: id, Message: &telegram.Message{
 		From: &telegram.User{ID: userID}, Chat: telegram.Chat{ID: userID, Type: chatType}, Text: text,
 	}}
 }
 
-// Принимает: t — тестовый контекст; gateway — шлюз; responder — обработчик; access — политика.
-// Делает: запускает бота в фоне и возвращает идемпотентную функцию остановки, которая ждёт завершения Run.
-// Возвращает: функцию stop.
 func runBot(t *testing.T, gateway *fakeGateway, responder ports.Responder, access ports.AccessPolicy) (stop func()) {
 	t.Helper()
 	bot := telegram.NewBot(gateway, responder, access,
@@ -114,9 +86,6 @@ func runBot(t *testing.T, gateway *fakeGateway, responder ports.Responder, acces
 	}
 }
 
-// Принимает: t — тестовый контекст; gateway — шлюз.
-// Делает: ждёт следующее отправленное сообщение или падает по таймауту.
-// Возвращает: отправленное сообщение.
 func nextSent(t *testing.T, gateway *fakeGateway) sentMessage {
 	t.Helper()
 	select {
@@ -128,9 +97,7 @@ func nextSent(t *testing.T, gateway *fakeGateway) sentMessage {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет основной путь: текст разрешённого пользователя доходит до обработчика с доверенным ID автора, ответ уходит в его чат, offset растёт.
-// Возвращает: ничего.
+// Проверяет: текст разрешённого пользователя доходит до обработчика с доверенным ID автора, ответ уходит в его чат, offset растёт.
 func TestBotRepliesWithTrustedAuthorID(t *testing.T) {
 	gateway := newFakeGateway([]telegram.Update{textUpdate(10, 42, "private", "кофе 350")})
 	var gotUser atomic.Int64
@@ -153,9 +120,7 @@ func TestBotRepliesWithTrustedAuthorID(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что чужие и неподходящие сообщения не доходят до обработчика: не из разрешённого списка, из группы, от ботов и без текста.
-// Возвращает: ничего.
+// Проверяет: не разрешённые, групповые, от ботов и без текста сообщения не доходят до обработчика.
 func TestBotFiltersMessages(t *testing.T) {
 	var calls atomic.Int32
 	updates := []telegram.Update{
@@ -183,9 +148,7 @@ func TestBotFiltersMessages(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что ошибка обработчика не раскрывается пользователю, а /start отвечает приветствием без вызова обработчика.
-// Возвращает: ничего.
+// Проверяет: ошибка обработчика не раскрывается пользователю, /start отвечает приветствием без обработчика.
 func TestBotHidesErrorsAndGreetsOnStart(t *testing.T) {
 	var calls atomic.Int32
 	gateway := newFakeGateway([]telegram.Update{
@@ -212,9 +175,7 @@ func TestBotHidesErrorsAndGreetsOnStart(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет порядок: два сообщения одного пользователя не выполняются одновременно и идут по очереди.
-// Возвращает: ничего.
+// Проверяет: два сообщения одного пользователя не выполняются одновременно.
 func TestBotSerializesMessagesOfOneUser(t *testing.T) {
 	var running, maxRunning atomic.Int32
 	gateway := newFakeGateway([]telegram.Update{
@@ -245,9 +206,7 @@ func TestBotSerializesMessagesOfOneUser(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что очень длинный ответ обрезается до лимита Telegram по символам.
-// Возвращает: ничего.
+// Проверяет: очень длинный ответ обрезается до лимита Telegram по символам.
 func TestBotTruncatesLongReplies(t *testing.T) {
 	gateway := newFakeGateway([]telegram.Update{textUpdate(1, 42, "private", "много")})
 	stop := runBot(t, gateway, responderFunc(func(context.Context, int64, string) (string, error) {
@@ -262,9 +221,7 @@ func TestBotTruncatesLongReplies(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что сообщения одного пользователя обрабатываются именно в порядке получения.
-// Возвращает: ничего.
+// Проверяет: сообщения одного пользователя обрабатываются в порядке получения.
 func TestBotKeepsMessageOrderPerUser(t *testing.T) {
 	updates := make([]telegram.Update, 0, 20)
 	for id := int64(1); id <= 20; id++ {

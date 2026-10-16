@@ -1,4 +1,4 @@
-// Package agent — ядро ИИ-агента учёта расходов: цикл «модель → инструменты → модель», память диалога и системный промпт.
+// Package agent — ядро ИИ-агента: цикл «модель → инструменты → модель», память диалога, промпт.
 package agent
 
 import (
@@ -18,13 +18,11 @@ const (
 	emptyReply = "Не удалось сформулировать ответ, попробуйте переформулировать запрос."
 )
 
-// ErrStepLimit сообщает, что модель не дала финальный ответ за допустимое число вызовов инструментов.
 var ErrStepLimit = errors.New("agent exceeded the tool-call step limit")
 
-// ScopeFactory выдаёт траты, жёстко привязанные к одному Telegram-пользователю; владелец берётся только из кода.
+// ScopeFactory выдаёт траты одного пользователя; владелец берётся только из кода, не от модели.
 type ScopeFactory func(owner domain.UserID) ports.UserExpenses
 
-// Agent превращает свободный текст пользователя в вызовы инструментов учёта и короткий ответ.
 type Agent struct {
 	llm      ports.LLM
 	scope    ScopeFactory
@@ -36,25 +34,18 @@ type Agent struct {
 	logger   *slog.Logger
 }
 
-// Option настраивает Agent при создании.
 type Option func(*Agent)
 
-// Принимает: location — часовой пояс календаря пользователей.
-// Делает: задаёт часовой пояс, в котором считаются «сегодня» и «вчера» в промпте.
-// Возвращает: Option.
 func WithLocation(location *time.Location) Option {
 	return func(agent *Agent) { agent.location = location }
 }
 
-// Принимает: logger — логгер агента.
-// Делает: заменяет логгер.
-// Возвращает: Option.
 func WithLogger(logger *slog.Logger) Option {
 	return func(agent *Agent) { agent.logger = logger }
 }
 
-// Принимает: llm — провайдер модели; scope — фабрика трат по владельцу; tools — набор инструментов; clock — источник времени для промпта; options — необязательные настройки.
-// Делает: собирает агента с UTC, памятью на 8 сообщений и лимитом в 5 шагов.
+// Принимает: llm, scope, tools, clock; options — необязательные настройки.
+// Делает: собирает агента: UTC, память на 8 сообщений, лимит 5 шагов.
 // Возвращает: готового агента.
 func New(llm ports.LLM, scope ScopeFactory, tools *ToolSet, clock ports.Clock, options ...Option) *Agent {
 	agent := &Agent{
@@ -73,9 +64,9 @@ func New(llm ports.LLM, scope ScopeFactory, tools *ToolSet, clock ports.Clock, o
 	return agent
 }
 
-// Принимает: ctx — контекст запроса; userID — Telegram ID автора сообщения; text — текст сообщения.
-// Делает: гоняет цикл «модель → инструменты → модель», где владельцем данных всегда служит userID, и запоминает реплику в истории.
-// Возвращает: итоговый ответ для пользователя либо ошибку LLM, ErrStepLimit или сбой инфраструктуры.
+// Принимает: ctx; userID — Telegram ID автора; text — сообщение.
+// Делает: гоняет цикл «модель → инструменты → модель» с владельцем userID, пишет историю.
+// Возвращает: ответ пользователю либо ошибку LLM, ErrStepLimit или инфраструктуры.
 func (agent *Agent) Handle(ctx context.Context, userID int64, text string) (string, error) {
 	owner, err := domain.NewUserID(userID)
 	if err != nil {
@@ -109,8 +100,8 @@ func (agent *Agent) Handle(ctx context.Context, userID int64, text string) (stri
 	return "", ErrStepLimit
 }
 
-// Принимает: userID — владелец диалога; userMessage — исходное сообщение; answer — ответ модели.
-// Делает: подставляет запасной текст на пустой ответ и сохраняет пару «вопрос — ответ» в истории.
+// Принимает: userID; userMessage; answer — ответ модели.
+// Делает: подставляет запасной текст на пустой ответ и сохраняет пару в историю.
 // Возвращает: текст ответа пользователю.
 func (agent *Agent) finish(userID int64, userMessage ports.Message, answer string) string {
 	if answer == "" {
@@ -120,9 +111,9 @@ func (agent *Agent) finish(userID int64, userMessage ports.Message, answer strin
 	return answer
 }
 
-// Принимает: ctx — контекст запроса; userID — владелец, нужен только для логов; expenses — траты владельца; call — вызов от модели.
-// Делает: находит инструмент и выполняет его; ошибки, которые модель может исправить, превращает в ответ-инструкцию.
-// Возвращает: JSON-строку для модели либо ошибку, если сбой не связан с аргументами модели.
+// Принимает: ctx; userID (для логов); expenses — траты владельца; call — вызов модели.
+// Делает: выполняет инструмент; исправимые моделью ошибки отдаёт ей как ответ.
+// Возвращает: JSON для модели либо ошибку, не связанную с аргументами модели.
 func (agent *Agent) runTool(ctx context.Context, userID int64, expenses ports.UserExpenses, call ports.ToolCall) (string, error) {
 	tool, found := agent.tools.Get(call.Name)
 	if !found {
@@ -145,9 +136,6 @@ func (agent *Agent) runTool(ctx context.Context, userID int64, expenses ports.Us
 	return string(encoded), nil
 }
 
-// Принимает: err — ошибка, которую модель должна увидеть.
-// Делает: оборачивает текст ошибки в JSON {"error": ...}.
-// Возвращает: строку для сообщения роли tool.
 func errorResult(err error) string {
 	encoded, marshalErr := json.Marshal(map[string]string{"error": err.Error()})
 	if marshalErr != nil {

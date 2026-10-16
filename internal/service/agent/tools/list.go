@@ -8,20 +8,19 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/ports"
 )
 
-// maxListedExpenses ограничивает размер ответа модели; итог считается по всем найденным тратам.
+// Ограничивает размер ответа модели; итог считается по всем найденным тратам.
 const maxListedExpenses = 50
 
-// listExpensesTool показывает траты владельца сообщения с фильтрами.
 type listExpensesTool struct{}
 
-// listExpensesArguments — аргументы list_expenses; фильтра по владельцу нет.
+// Фильтра по владельцу нет намеренно.
 type listExpensesArguments struct {
 	Category *string `json:"category"`
 	From     *string `json:"from"`
 	To       *string `json:"to"`
 }
 
-// listExpensesResult — ответ list_expenses: траты, посчитанный итог и id последней добавленной траты.
+// total_rub и latest_id считаются по всем найденным тратам, а не по обрезанному списку.
 type listExpensesResult struct {
 	Count     int           `json:"count"`
 	TotalRub  string        `json:"total_rub"`
@@ -30,9 +29,6 @@ type listExpensesResult struct {
 	Expenses  []expenseView `json:"expenses"`
 }
 
-// Принимает: ничего.
-// Делает: описывает инструмент list_expenses и необязательные фильтры.
-// Возвращает: ToolSpec без обязательных аргументов.
 func (tool listExpensesTool) Spec() ports.ToolSpec {
 	category := categoryProperty()
 	category["description"] = "Фильтр по категории. " + category["description"].(string)
@@ -47,8 +43,8 @@ func (tool listExpensesTool) Spec() ports.ToolSpec {
 	}
 }
 
-// Принимает: ctx — контекст запроса; expenses — траты владельца сообщения; arguments — JSON от модели.
-// Делает: применяет фильтры, считает итог и id последней траты по всем найденным записям и обрезает список до лимита.
+// Принимает: ctx; expenses; arguments — JSON от модели.
+// Делает: применяет фильтры и отдаёт сводку.
 // Возвращает: listExpensesResult либо ошибку аргументов или периода.
 func (tool listExpensesTool) Execute(ctx context.Context, expenses ports.UserExpenses, arguments json.RawMessage) (any, error) {
 	var args listExpensesArguments
@@ -79,9 +75,9 @@ func (tool listExpensesTool) Execute(ctx context.Context, expenses ports.UserExp
 	return tool.summarize(items), nil
 }
 
-// Принимает: items — все найденные траты владельца.
-// Делает: считает итог и максимальный id по всем записям, показывает не больше maxListedExpenses.
-// Возвращает: готовый listExpensesResult.
+// Принимает: items — все найденные траты.
+// Делает: считает итог и максимальный id по всем, показывает не больше maxListedExpenses.
+// Возвращает: listExpensesResult.
 func (tool listExpensesTool) summarize(items []domain.Expense) listExpensesResult {
 	result := listExpensesResult{Count: len(items), Expenses: make([]expenseView, 0, len(items))}
 	var total domain.Money

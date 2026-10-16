@@ -15,23 +15,16 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/service/agent/tools"
 )
 
-// stubExpenses — область трат с заготовленным списком; запоминает последний вызов Update.
 type stubExpenses struct {
 	items   []domain.Expense
 	changes domain.Changes
 	updated bool
 }
 
-// Принимает: _ — контекст не используется; _ — вход создания не используется.
-// Делает: ничего, эти тесты не создают траты.
-// Возвращает: пустой расход и nil.
 func (stub *stubExpenses) Create(context.Context, ports.UserCreateInput) (domain.Expense, error) {
 	return domain.Expense{}, nil
 }
 
-// Принимает: _ — контекст не используется; id — идентификатор.
-// Делает: ищет трату в заготовленном списке.
-// Возвращает: трату либо ports.ErrNotFound.
 func (stub *stubExpenses) Get(_ context.Context, id domain.ExpenseID) (domain.Expense, error) {
 	for _, item := range stub.items {
 		if item.ID() == id {
@@ -41,32 +34,19 @@ func (stub *stubExpenses) Get(_ context.Context, id domain.ExpenseID) (domain.Ex
 	return domain.Expense{}, ports.ErrNotFound
 }
 
-// Принимает: _ — контекст не используется; _ — фильтр не используется.
-// Делает: отдаёт весь заготовленный список.
-// Возвращает: список и nil.
 func (stub *stubExpenses) List(context.Context, ports.ListFilter) ([]domain.Expense, error) {
 	return stub.items, nil
 }
 
-// Принимает: _ — контекст не используется; id — идентификатор; changes — изменения.
-// Делает: запоминает изменения.
-// Возвращает: найденную трату либо ports.ErrNotFound.
 func (stub *stubExpenses) Update(ctx context.Context, id domain.ExpenseID, changes domain.Changes) (domain.Expense, error) {
 	stub.changes, stub.updated = changes, true
 	return stub.Get(ctx, id)
 }
 
-// Принимает: _ — контекст не используется; _ — идентификатор не используется.
-// Делает: ничего.
-// Возвращает: nil.
 func (stub *stubExpenses) Delete(context.Context, domain.ExpenseID) error { return nil }
 
-// Проверка на этапе компиляции: заглушка реализует ports.UserExpenses.
 var _ ports.UserExpenses = (*stubExpenses)(nil)
 
-// Принимает: t — тестовый контекст; count — сколько трат создать.
-// Делает: создаёт траты по 1 рублю с возрастающими ID через конструкторы домена.
-// Возвращает: срез трат.
 func manyExpenses(t *testing.T, count int) []domain.Expense {
 	t.Helper()
 	owner := domaintest.UserID(t, 7)
@@ -86,9 +66,6 @@ func manyExpenses(t *testing.T, count int) []domain.Expense {
 	return items
 }
 
-// Принимает: t — тестовый контекст; name — имя инструмента.
-// Делает: достаёт инструмент из стандартного набора.
-// Возвращает: инструмент.
 func tool(t *testing.T, name string) ports.Tool {
 	t.Helper()
 	found, ok := tools.Default().Get(name)
@@ -98,9 +75,7 @@ func tool(t *testing.T, name string) ports.Tool {
 	return found
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что список обрезается до 50 записей, а итог и последний id считаются по всем найденным.
-// Возвращает: ничего.
+// Проверяет: список обрезается до 50 записей, а итог и последний id считаются по всем найденным.
 func TestListTruncatesButTotalsEverything(t *testing.T) {
 	stub := &stubExpenses{items: manyExpenses(t, 60)}
 
@@ -125,9 +100,7 @@ func TestListTruncatesButTotalsEverything(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что обновление без единого поля отклоняется до обращения к области трат.
-// Возвращает: ничего.
+// Проверяет: обновление без единого поля отклоняется до обращения к области трат.
 func TestUpdateRequiresAtLeastOneField(t *testing.T) {
 	stub := &stubExpenses{items: manyExpenses(t, 1)}
 
@@ -139,9 +112,7 @@ func TestUpdateRequiresAtLeastOneField(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет сборку частичного изменения: комментарий-пустая-строка очищает, неуказанные поля остаются nil.
-// Возвращает: ничего.
+// Проверяет: сборку частичного изменения: комментарий-пустая-строка очищает, неуказанные поля остаются nil.
 func TestUpdateBuildsPartialChanges(t *testing.T) {
 	stub := &stubExpenses{items: manyExpenses(t, 1)}
 
@@ -157,9 +128,7 @@ func TestUpdateBuildsPartialChanges(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет таблицу некорректных аргументов: все должны давать ошибку, которую модель способна исправить.
-// Возвращает: ничего.
+// Проверяет: таблицу некорректных аргументов: все должны давать ошибку, которую модель способна исправить.
 func TestInvalidArgumentsAreRecoverable(t *testing.T) {
 	tests := []struct {
 		tool      string

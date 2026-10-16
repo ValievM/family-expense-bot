@@ -8,7 +8,7 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/ports"
 )
 
-// responsesRequest — тело запроса к Responses API; store=false и stream=true обязательны для оплаты подпиской.
+// responsesRequest — store=false и stream=true обязательны для оплаты подпиской.
 type responsesRequest struct {
 	Model  string          `json:"model"`
 	Input  []any           `json:"input"`
@@ -42,7 +42,6 @@ type responsesFunctionOutput struct {
 	Output string `json:"output"`
 }
 
-// streamEvent — подмножество событий потока, нужное для сборки ответа.
 type streamEvent struct {
 	Type  string `json:"type"`
 	Delta string `json:"delta"`
@@ -68,7 +67,7 @@ type streamError struct {
 }
 
 // Принимает: model — slug модели; request — запрос агента.
-// Делает: переводит нейтральный разговор в элементы input Responses API: сообщения, вызовы функций и их результаты.
+// Делает: переводит разговор в элементы input: сообщения, вызовы функций и их результаты.
 // Возвращает: тело запроса.
 func newResponsesRequest(model string, request ports.Request) responsesRequest {
 	wire := responsesRequest{Model: model, Input: make([]any, 0, len(request.Messages)), Store: false, Stream: true}
@@ -84,7 +83,7 @@ func newResponsesRequest(model string, request ports.Request) responsesRequest {
 }
 
 // Принимает: message — сообщение разговора.
-// Делает: раскладывает его на элементы input: tool-сообщение становится function_call_output, вызовы ассистента становятся function_call.
+// Делает: tool-сообщение даёт function_call_output, вызовы ассистента — function_call.
 // Возвращает: один или несколько элементов input.
 func toResponsesItems(message ports.Message) []any {
 	if message.Role == ports.RoleTool {
@@ -104,7 +103,7 @@ func toResponsesItems(message ports.Message) []any {
 
 // Принимает: data — JSON одного события.
 // Делает: разбирает событие потока.
-// Возвращает: событие либо ошибку разбора; служебная строка [DONE] даёт пустое событие.
+// Возвращает: событие или ошибку; служебная строка [DONE] даёт пустое событие.
 func parseEvent(data string) (streamEvent, error) {
 	if data == "" || data == "[DONE]" {
 		return streamEvent{}, nil
@@ -117,7 +116,7 @@ func parseEvent(data string) (streamEvent, error) {
 }
 
 // Принимает: ничего.
-// Делает: превращает событие-сбой в ошибку с кодом OpenAI (например, subscription_sharing_usage_limit_exceeded).
+// Делает: превращает событие-сбой в ошибку с кодом OpenAI.
 // Возвращает: *APIError с кодом и текстом.
 func (event streamEvent) failure() error {
 	code, message := event.Code, event.Message

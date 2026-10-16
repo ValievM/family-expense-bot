@@ -8,15 +8,14 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/ports"
 )
 
-// Server переводит HTTP-запросы в use case'ы расходов.
 type Server struct {
 	expenses ports.ExpenseService
 	logger   *slog.Logger
 }
 
-// Принимает: expenses — сервис расходов, logger — логгер.
-// Делает: создаёт Server; nil logger заменяется на slog.Default().
-// Возвращает: указатель на Server.
+// Принимает: expenses — сервис расходов, logger — логгер (nil заменяется на slog.Default()).
+// Делает: создаёт Server.
+// Возвращает: *Server.
 func NewServer(expenses ports.ExpenseService, logger *slog.Logger) *Server {
 	if logger == nil {
 		logger = slog.Default()
@@ -25,7 +24,7 @@ func NewServer(expenses ports.ExpenseService, logger *slog.Logger) *Server {
 }
 
 // Принимает: ничего.
-// Делает: регистрирует маршруты API в ServeMux и оборачивает их в requestLogger и recoverer.
+// Делает: регистрирует маршруты API и оборачивает их в requestLogger и recoverer.
 // Возвращает: готовый http.Handler.
 func (server *Server) Handler() http.Handler {
 	mux := http.NewServeMux()

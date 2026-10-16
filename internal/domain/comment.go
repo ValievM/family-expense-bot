@@ -5,10 +5,8 @@ import (
 	"unicode/utf8"
 )
 
-// maxCommentRunes — максимальная длина комментария в символах.
 const maxCommentRunes = 500
 
-// Comment — неизменяемое необязательное пояснение к расходу; пробелы по краям отбрасываются.
 type Comment struct {
 	text string
 }
@@ -24,9 +22,6 @@ func NewComment(text string) (Comment, error) {
 	return Comment{text: text}, nil
 }
 
-// Принимает: ничего.
-// Делает: читает текст.
-// Возвращает: строку комментария.
 func (comment Comment) String() string {
 	return comment.text
 }

@@ -5,9 +5,9 @@ import (
 	"time"
 )
 
-// Принимает: ctx — контекст; backoff — пауза перед попыткой по её номеру; shouldRetry — решает, повторять ли после ошибки; call — одна попытка запроса.
-// Делает: вызывает call до maxRetries+1 раз, между попытками ждёт backoff с учётом отмены контекста; останавливается на первой неповторяемой ошибке.
-// Возвращает: результат успешной попытки, последнюю ошибку или ctx.Err() при отмене во время паузы.
+// Принимает: ctx; backoff — пауза по номеру попытки; shouldRetry — повторять ли; call — одна попытка.
+// Делает: зовёт call до maxRetries+1 раз с паузами backoff; останавливается на первой неповторяемой ошибке.
+// Возвращает: результат успешной попытки, последнюю ошибку или ctx.Err() при отмене паузы.
 func withRetries[T any](ctx context.Context, backoff func(attempt int) time.Duration, shouldRetry func(error) bool, call func() (T, error)) (T, error) {
 	var zero T
 	var lastErr error

@@ -15,21 +15,13 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/ports"
 )
 
-// Принимает: int — номер попытки (не используется).
-// Делает: задаёт нулевую паузу между повторами.
-// Возвращает: time.Duration, равный нулю.
 func noBackoff(int) time.Duration { return 0 }
 
-// Принимает: url — адрес тестового сервера.
-// Делает: создаёт клиент с тестовой моделью, ключом secret и нулевым backoff.
-// Возвращает: *llm.Client.
 func newTestClient(url string) *llm.Client {
 	return llm.NewClient(url+"/v1/", "test-model", llm.NewAPIKeyAuthorizer("secret"), llm.WithBackoff(noBackoff))
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: что Complete шлёт на /v1/chat/completions модель, bearer-ключ и инструменты с tool_choice=auto и разбирает tool_calls ответа.
-// Возвращает: ничего.
+// Проверяет: Complete шлёт модель, bearer-ключ и инструменты с tool_choice=auto и разбирает tool_calls ответа.
 func TestCompleteSendsToolsAndParsesToolCalls(t *testing.T) {
 	var got map[string]any
 	var auth, path string
@@ -63,9 +55,7 @@ func TestCompleteSendsToolsAndParsesToolCalls(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: что ассистентское сообщение с tool_calls уходит с null content, а ответ инструмента несёт tool_call_id и роль tool.
-// Возвращает: ничего.
+// Проверяет: ассистентское сообщение с tool_calls уходит с null content, ответ инструмента несёт tool_call_id.
 func TestCompleteEncodesToolResultAndAssistantToolCalls(t *testing.T) {
 	var got struct {
 		Messages []map[string]any `json:"messages"`
@@ -95,9 +85,7 @@ func TestCompleteEncodesToolResultAndAssistantToolCalls(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: что ответы 429 повторяются и после третьей попытки возвращается успешный ответ.
-// Возвращает: ничего.
+// Проверяет: 429 повторяется, после третьей попытки возвращается успех.
 func TestCompleteRetriesTransientFailures(t *testing.T) {
 	var calls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -115,9 +103,7 @@ func TestCompleteRetriesTransientFailures(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: что ошибка 401 не повторяется и возвращается как *llm.APIError.
-// Возвращает: ничего.
+// Проверяет: 401 не повторяется и возвращается как *llm.APIError.
 func TestCompleteDoesNotRetryClientErrors(t *testing.T) {
 	var calls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -134,9 +120,7 @@ func TestCompleteDoesNotRetryClientErrors(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: что пустой список choices даёт llm.ErrEmptyResponse.
-// Возвращает: ничего.
+// Проверяет: пустой список choices даёт llm.ErrEmptyResponse.
 func TestCompleteReportsEmptyChoices(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"choices":[]}`))
@@ -150,9 +134,7 @@ func TestCompleteReportsEmptyChoices(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: что отмена контекста во время паузы между повторами прерывает Complete с context.Canceled.
-// Возвращает: ничего.
+// Проверяет: отмена контекста во время паузы прерывает Complete с context.Canceled.
 func TestCompleteStopsRetryingWhenContextIsCancelled(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "down", http.StatusBadGateway)

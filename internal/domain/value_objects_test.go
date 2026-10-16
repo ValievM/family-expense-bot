@@ -10,9 +10,7 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/domain"
 )
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет конструктор NewMoney: границы и невозможность отрицательной суммы.
-// Возвращает: ничего.
+// Проверяет: NewMoney: границы и невозможность отрицательной суммы.
 func TestNewMoney(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -43,9 +41,7 @@ func TestNewMoney(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет перевод рублей в копейки: округление и недопустимые значения.
-// Возвращает: ничего.
+// Проверяет: перевод рублей в копейки: округление и недопустимые значения.
 func TestMoneyFromRubles(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -82,9 +78,7 @@ func TestMoneyFromRubles(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет форматирование, сложение и положительность суммы.
-// Возвращает: ничего.
+// Проверяет: форматирование, сложение и положительность суммы.
 func TestMoneyStringAddAndPositivity(t *testing.T) {
 	cases := map[int64]string{0: "0.00", 5: "0.05", 35000: "350.00", 9990: "99.90", 123456789: "1234567.89"}
 	for kopecks, want := range cases {
@@ -104,9 +98,7 @@ func TestMoneyStringAddAndPositivity(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет конструкторы Day: существующие и несуществующие даты, строгий формат разбора.
-// Возвращает: ничего.
+// Проверяет: NewDay и ParseDay: существующие и несуществующие даты, строгий формат разбора.
 func TestDayConstructors(t *testing.T) {
 	valid := []string{"2026-01-02", "2024-02-29", "0001-01-01"}
 	for _, value := range valid {
@@ -127,9 +119,7 @@ func TestDayConstructors(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет DayOf: один момент времени даёт разные дни в разных часовых поясах; nil означает UTC.
-// Возвращает: ничего.
+// Проверяет: один момент времени даёт разные дни в разных часовых поясах; nil означает UTC.
 func TestDayOfUsesTheGivenLocation(t *testing.T) {
 	moscow := time.FixedZone("MSK", 3*60*60)
 	instant := time.Date(2026, time.January, 1, 22, 30, 0, 0, time.UTC)
@@ -142,9 +132,7 @@ func TestDayOfUsesTheGivenLocation(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет сравнение дней и нулевое значение.
-// Возвращает: ничего.
+// Проверяет: сравнение дней и нулевое значение.
 func TestDayCompareAndZero(t *testing.T) {
 	earlier, _ := domain.ParseDay("2026-01-01")
 	sameDay, _ := domain.ParseDay("2026-01-01")
@@ -158,9 +146,7 @@ func TestDayCompareAndZero(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет конструктор UserID.
-// Возвращает: ничего.
+// Проверяет: NewUserID принимает положительные ID и отклоняет остальные.
 func TestNewUserID(t *testing.T) {
 	for _, bad := range []int64{0, -5} {
 		if _, err := domain.NewUserID(bad); !errors.Is(err, domain.ErrInvalidUser) {
@@ -176,9 +162,7 @@ func TestNewUserID(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет конструктор Comment: обрезка пробелов и предел длины по символам.
-// Возвращает: ничего.
+// Проверяет: NewComment: обрезка пробелов и предел длины по символам.
 func TestNewComment(t *testing.T) {
 	comment, err := domain.NewComment("  кофе  ")
 	if err != nil || comment.String() != "кофе" {
@@ -192,9 +176,7 @@ func TestNewComment(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет ParseCategory: известный ключ проходит, неизвестный отклоняется.
-// Возвращает: ничего.
+// Проверяет: ParseCategory: известный ключ проходит, неизвестный отклоняется.
 func TestParseCategory(t *testing.T) {
 	if category, err := domain.ParseCategory("food"); err != nil || category != domain.CategoryFood {
 		t.Errorf("ParseCategory(food) = %v, %v", category, err)

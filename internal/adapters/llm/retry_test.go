@@ -19,9 +19,7 @@ func alwaysRetry(error) bool { return true }
 // Возвращает: ноль.
 func zeroBackoff(int) time.Duration { return 0 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что после временных сбоев возвращается успешный результат.
-// Возвращает: ничего.
+// Проверяет: после временных сбоев возвращается успешный результат.
 func TestWithRetriesSucceedsAfterRetries(t *testing.T) {
 	calls := 0
 	got, err := withRetries(context.Background(), zeroBackoff, alwaysRetry, func() (string, error) {
@@ -36,9 +34,7 @@ func TestWithRetriesSucceedsAfterRetries(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что неповторяемая ошибка останавливает цикл сразу.
-// Возвращает: ничего.
+// Проверяет: неповторяемая ошибка сразу останавливает цикл.
 func TestWithRetriesStopsOnNonRetryable(t *testing.T) {
 	calls := 0
 	_, err := withRetries(context.Background(), zeroBackoff, func(error) bool { return false }, func() (int, error) {
@@ -50,9 +46,7 @@ func TestWithRetriesStopsOnNonRetryable(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что отмена контекста во время паузы прерывает повторы.
-// Возвращает: ничего.
+// Проверяет: отмена контекста во время паузы прерывает повторы.
 func TestWithRetriesStopsOnContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	calls := 0
@@ -68,9 +62,7 @@ func TestWithRetriesStopsOnContextCancel(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что при исчерпании попыток возвращается последняя ошибка.
-// Возвращает: ничего.
+// Проверяет: при исчерпании попыток возвращается последняя ошибка.
 func TestWithRetriesReturnsLastErrorWhenExhausted(t *testing.T) {
 	calls := 0
 	_, err := withRetries(context.Background(), zeroBackoff, alwaysRetry, func() (int, error) {

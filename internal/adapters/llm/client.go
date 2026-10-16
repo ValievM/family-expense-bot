@@ -21,20 +21,15 @@ const (
 	maxErrorBody   = 512
 )
 
-// APIError — ответ провайдера с неуспешным статусом.
 type APIError struct {
 	Status  int
 	Message string
 }
 
-// Принимает: ничего.
-// Делает: формирует текст ошибки со статусом и телом ответа.
-// Возвращает: строку с описанием ошибки.
 func (err *APIError) Error() string {
 	return fmt.Sprintf("llm provider returned %d: %s", err.Status, err.Message)
 }
 
-// Client — клиент любого сервера с POST {base}/chat/completions и вызовом инструментов.
 type Client struct {
 	baseURL    string
 	model      string
@@ -43,21 +38,16 @@ type Client struct {
 	backoff    func(attempt int) time.Duration
 }
 
-// Проверка на этапе компиляции: Client реализует порт LLM.
 var _ ports.LLM = (*Client)(nil)
 
-// Option — настройка Client.
 type Option func(*Client)
 
-// Принимает: backoff — функция задержки перед повторной попыткой по её номеру.
-// Делает: создаёт опцию, переопределяющую паузу между повторами; тесты используют её, чтобы не ждать.
-// Возвращает: Option, применяемая в NewClient.
 func WithBackoff(backoff func(attempt int) time.Duration) Option {
 	return func(client *Client) { client.backoff = backoff }
 }
 
-// Принимает: baseURL — корень API (например, https://api.openai.com/v1); model — имя модели; authorizer — способ авторизации; options — дополнительные настройки.
-// Делает: собирает клиент, убирает завершающие слеши в baseURL и ставит HTTP-клиент с таймаутом 60 секунд и линейный backoff.
+// Принимает: корень API, имя модели, способ авторизации и дополнительные опции.
+// Делает: обрезает завершающие слеши baseURL, ставит HTTP-таймаут 60 с и линейный backoff.
 // Возвращает: готовый *Client.
 func NewClient(baseURL, model string, authorizer Authorizer, options ...Option) *Client {
 	client := &Client{
@@ -73,9 +63,9 @@ func NewClient(baseURL, model string, authorizer Authorizer, options ...Option) 
 	return client
 }
 
-// Принимает: ctx — контекст запроса; request — сообщения и описания инструментов.
-// Делает: отправляет диалог провайдеру и повторяет запрос (до maxRetries раз) при 429 и 5xx с паузой между попытками.
-// Возвращает: ответ ассистента или последнюю ошибку; ошибку контекста, если ожидание прервано отменой.
+// Принимает: ctx — контекст; request — сообщения и описания инструментов.
+// Делает: отправляет диалог провайдеру; при 429 и 5xx повторяет до maxRetries раз с паузой.
+// Возвращает: ответ ассистента или последнюю ошибку; ошибку контекста при отмене ожидания.
 func (client *Client) Complete(ctx context.Context, request ports.Request) (ports.Message, error) {
 	payload, err := json.Marshal(newChatRequest(client.model, request))
 	if err != nil {
@@ -87,9 +77,9 @@ func (client *Client) Complete(ctx context.Context, request ports.Request) (port
 	})
 }
 
-// Принимает: ctx — контекст запроса; payload — JSON тела запроса.
-// Делает: выполняет один POST на /chat/completions с авторизацией и разбирает ответ; при статусе не 200 читает до maxErrorBody байт тела.
-// Возвращает: сообщение ассистента, *APIError при неуспешном статусе или ошибку сборки, вызова и разбора.
+// Принимает: ctx — контекст; payload — JSON тела запроса.
+// Делает: один POST на /chat/completions с авторизацией; при ошибке читает до maxErrorBody байт тела.
+// Возвращает: сообщение ассистента, *APIError при неуспешном статусе или ошибку вызова и разбора.
 func (client *Client) send(ctx context.Context, payload []byte) (ports.Message, error) {
 	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, client.baseURL+"/chat/completions", bytes.NewReader(payload))
 	if err != nil {
@@ -118,8 +108,8 @@ func (client *Client) send(ctx context.Context, payload []byte) (ports.Message, 
 	return decoded.assistantMessage()
 }
 
-// Принимает: err — ошибка попытки запроса.
-// Делает: определяет, стоит ли повторять запрос: только для *APIError со статусом 429 или 5xx.
+// Принимает: err — ошибка попытки.
+// Делает: разрешает повтор только для *APIError со статусом 429 или 5xx.
 // Возвращает: true, если повтор допустим.
 func retryable(err error) bool {
 	var apiErr *APIError
@@ -130,7 +120,7 @@ func retryable(err error) bool {
 }
 
 // Принимает: ctx — контекст; duration — длительность паузы.
-// Делает: ждёт указанное время или отмену контекста, останавливая таймер.
+// Делает: ждёт указанное время или отмену контекста.
 // Возвращает: nil после паузы или ctx.Err() при отмене.
 func sleep(ctx context.Context, duration time.Duration) error {
 	timer := time.NewTimer(duration)

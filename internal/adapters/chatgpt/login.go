@@ -21,28 +21,24 @@ const (
 	loginTimeout = 5 * time.Minute
 )
 
-// LoginOptions настраивает интерактивный вход.
 type LoginOptions struct {
-	// Existing — прежние данные: из них берутся клиентский и хостовый идентификаторы для повторного входа.
-	Existing *Credentials
-	// AgentName — отображаемое имя приложения при первой регистрации.
+	// Existing — прежние данные: из них берутся client_id и host id для повторного входа.
+	Existing  *Credentials
 	AgentName string
 	// Port — порт локального callback-сервера на 127.0.0.1; 0 выбирает свободный.
-	Port int
-	// OpenBrowser открывает адрес входа; в тестах подменяется.
+	Port        int
 	OpenBrowser func(authURL string) error
-	// Timeout — сколько ждать завершения входа; ноль означает loginTimeout.
+	// Timeout — ожидание завершения входа; ноль означает loginTimeout.
 	Timeout time.Duration
 }
 
-// callbackResult — параметры, пришедшие на адрес возврата.
 type callbackResult struct {
 	code, state, clientID, errorCode string
 }
 
-// Принимает: ctx — контекст; oauth — клиент сервера авторизации; options — настройки входа.
-// Делает: запускает локальный callback-сервер, открывает браузер, проверяет state, обменивает код по PKCE и проверяет, что выдано право расходовать подписку.
-// Возвращает: новые учётные данные либо ошибку отказа, таймаута или обмена кода.
+// Принимает: ctx; oauth — клиент сервера авторизации; options — настройки входа.
+// Делает: поднимает callback-сервер, открывает браузер, проверяет state, меняет код по PKCE, требует право на подписку.
+// Возвращает: новые данные или ошибку отказа, таймаута либо обмена кода.
 func Login(ctx context.Context, oauth *OAuth, options LoginOptions) (Credentials, error) {
 	listener, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(options.Port)))
 	if err != nil {
@@ -123,7 +119,7 @@ func Login(ctx context.Context, oauth *OAuth, options LoginOptions) (Credentials
 }
 
 // Принимает: results — канал для результата.
-// Делает: отдаёт обработчик адреса возврата: запоминает параметры один раз и показывает пользователю короткую страницу.
+// Делает: отдаёт обработчик возврата: запоминает параметры один раз и показывает короткую страницу.
 // Возвращает: http.Handler.
 func callbackHandler(results chan<- callbackResult) http.Handler {
 	mux := http.NewServeMux()
@@ -147,8 +143,8 @@ func callbackHandler(results chan<- callbackResult) http.Handler {
 	return mux
 }
 
-// Принимает: clientID, agentName, hostID, redirectURI, state, nonce, codeChallenge — параметры запроса входа.
-// Делает: собирает адрес страницы входа; имя приложения отправляется только при первой регистрации.
+// Принимает: параметры запроса входа; agentName нужен только при первой регистрации.
+// Делает: собирает адрес страницы входа.
 // Возвращает: полный URL.
 func (oauth *OAuth) authorizationURL(clientID, agentName, hostID, redirectURI, state, nonce, codeChallenge string) string {
 	query := url.Values{
@@ -170,8 +166,8 @@ func (oauth *OAuth) authorizationURL(clientID, agentName, hostID, redirectURI, s
 }
 
 // Принимает: ничего.
-// Делает: генерирует случайный UUID версии 4 в виде URN, как требует параметр ext_agent_host_id.
-// Возвращает: строку вида "urn:uuid:xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx" или ошибку источника случайности.
+// Делает: генерирует UUID v4 в виде URN, как требует ext_agent_host_id.
+// Возвращает: строку urn:uuid:... или ошибку источника случайности.
 func newHostID() (string, error) {
 	var id [16]byte
 	if _, err := rand.Read(id[:]); err != nil {
@@ -183,7 +179,7 @@ func newHostID() (string, error) {
 }
 
 // Принимает: length — число случайных байт.
-// Делает: читает криптостойкие случайные байты и кодирует их в base64url без заполнения.
+// Делает: читает криптостойкие байты и кодирует их в base64url без заполнения.
 // Возвращает: строку или ошибку источника случайности.
 func randomString(length int) (string, error) {
 	buffer := make([]byte, length)
@@ -193,9 +189,6 @@ func randomString(length int) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(buffer), nil
 }
 
-// Принимает: verifier — PKCE-секрет.
-// Делает: считает code_challenge как base64url от SHA-256 без заполнения.
-// Возвращает: строку challenge.
 func challenge(verifier string) string {
 	sum := sha256.Sum256([]byte(verifier))
 	return base64.RawURLEncoding.EncodeToString(sum[:])

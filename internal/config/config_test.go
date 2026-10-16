@@ -7,16 +7,11 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/config"
 )
 
-// Принимает: values — переменные окружения для теста.
-// Делает: строит функцию чтения окружения поверх словаря.
-// Возвращает: функцию, совместимую с config.Load.
 func env(values map[string]string) func(string) string {
 	return func(key string) string { return values[key] }
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет значения по умолчанию при минимальном окружении.
-// Возвращает: ничего.
+// Проверяет: значения по умолчанию при минимальном окружении.
 func TestLoadAppliesDefaults(t *testing.T) {
 	cfg, err := config.Load(env(map[string]string{"DATABASE_URL": "postgres://db"}))
 	if err != nil {
@@ -28,9 +23,7 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет таблицу ошибочных конфигураций, включая несколько проблем сразу.
-// Возвращает: ничего.
+// Проверяет: ошибочные конфигурации отклоняются, несколько проблем сообщаются сразу.
 func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -62,9 +55,7 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что локальная модель без ключа допустима и что список разрешённых пользователей работает.
-// Возвращает: ничего.
+// Проверяет: endpoint без ключа допустим, список разрешённых пользователей фильтрует.
 func TestLoadAllowsKeylessCustomEndpointAndFiltersUsers(t *testing.T) {
 	cfg, err := config.Load(env(map[string]string{
 		"DATABASE_URL":       "x",
@@ -81,9 +72,7 @@ func TestLoadAllowsKeylessCustomEndpointAndFiltersUsers(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что пустой список разрешённых пользователей пускает всех.
-// Возвращает: ничего.
+// Проверяет: пустой список разрешённых пользователей пускает всех.
 func TestEmptyAllowListAllowsEveryone(t *testing.T) {
 	cfg, err := config.Load(env(map[string]string{"DATABASE_URL": "x"}))
 	if err != nil {
@@ -95,9 +84,7 @@ func TestEmptyAllowListAllowsEveryone(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет режим подписки: ключ не нужен, модель по умолчанию пустая (выбирается из списка аккаунта), файл входа берётся по умолчанию.
-// Возвращает: ничего.
+// Проверяет: режим oauth не требует ключа, модель пуста, файл входа по умолчанию.
 func TestLoadOAuthModeNeedsNoKeyAndNoDefaultModel(t *testing.T) {
 	cfg, err := config.Load(env(map[string]string{"DATABASE_URL": "x", "TELEGRAM_BOT_TOKEN": "t", "LLM_AUTH": "OAuth"}))
 	if err != nil {

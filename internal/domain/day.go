@@ -4,14 +4,13 @@ import "time"
 
 const dayLayout = "2006-01-02"
 
-// Day — неизменяемое значение «календарный день» без часового пояса и времени суток.
 type Day struct {
 	date time.Time // полночь UTC, поэтому сравнение и равенство однозначны
 }
 
 // Принимает: year, month, day — компоненты даты по григорианскому календарю.
-// Делает: создаёт день и проверяет, что такой даты существует.
-// Возвращает: Day либо ErrInvalidDate (нулевой год, 31 февраля и так далее).
+// Делает: проверяет, что такая дата существует.
+// Возвращает: Day либо ErrInvalidDate (нулевой год, 31 февраля).
 func NewDay(year int, month time.Month, day int) (Day, error) {
 	date := time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
 	if year < 1 || date.Year() != year || date.Month() != month || date.Day() != day {
@@ -20,8 +19,8 @@ func NewDay(year int, month time.Month, day int) (Day, error) {
 	return Day{date: date}, nil
 }
 
-// Принимает: value — строка YYYY-MM-DD с нулями.
-// Делает: строго разбирает день; нестрогие формы вроде "2026-1-5" отклоняются.
+// Принимает: value — строка YYYY-MM-DD.
+// Делает: строго разбирает день, "2026-1-5" отклоняется.
 // Возвращает: Day либо ErrInvalidDate.
 func ParseDay(value string) (Day, error) {
 	parsed, err := time.Parse(dayLayout, value)
@@ -31,9 +30,9 @@ func ParseDay(value string) (Day, error) {
 	return NewDay(parsed.Year(), parsed.Month(), parsed.Day())
 }
 
-// Принимает: instant — момент времени; location — часовой пояс пользователя, nil означает UTC.
-// Делает: определяет, какому календарному дню принадлежит момент в этом поясе («сегодня» для пользователя).
-// Возвращает: Day; для некорректных годов нулевой Day.
+// Принимает: instant — момент времени; location — пояс пользователя, nil означает UTC.
+// Делает: определяет календарный день момента в этом поясе.
+// Возвращает: Day; нулевой Day для некорректного года.
 func DayOf(instant time.Time, location *time.Location) Day {
 	if location == nil {
 		location = time.UTC
@@ -46,16 +45,10 @@ func DayOf(instant time.Time, location *time.Location) Day {
 	return result
 }
 
-// Принимает: ничего.
-// Делает: проверяет, что день не задан (нулевое значение).
-// Возвращает: true для нулевого Day.
 func (day Day) IsZero() bool {
 	return day.date.IsZero()
 }
 
-// Принимает: ничего.
-// Делает: форматирует день.
-// Возвращает: строку YYYY-MM-DD.
 func (day Day) String() string {
 	return day.date.Format(dayLayout)
 }

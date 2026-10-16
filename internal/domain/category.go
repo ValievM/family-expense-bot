@@ -1,10 +1,9 @@
 // Package domain — значения расходов и их бизнес-валидация без зависимостей от адаптеров.
 package domain
 
-// Category — стабильный ключ, по которому классифицируется расход.
 type Category string
 
-// Идентификаторы категорий неизменны, так как хранилище и потребители используют одни и те же ключи.
+// Ключи категорий неизменны: их хранит БД.
 const (
 	CategoryFood          Category = "food"
 	CategoryTransport     Category = "transport"
@@ -15,13 +14,12 @@ const (
 	CategoryOther         Category = "other"
 )
 
-// categoryOption — пара из ключа категории и её отображаемого названия.
 type categoryOption struct {
 	key   Category
 	label string
 }
 
-// categoryOptions — закрытый упорядоченный каталог категорий.
+// categoryOptions — закрытый каталог; порядок определяет вывод Categories.
 var categoryOptions = [...]categoryOption{
 	{key: CategoryFood, label: "еда"},
 	{key: CategoryTransport, label: "транспорт"},
@@ -32,9 +30,9 @@ var categoryOptions = [...]categoryOption{
 	{key: CategoryOther, label: "другое"},
 }
 
-// Принимает: ничего (получатель — категория).
-// Делает: ищет русское название категории в каталоге.
-// Возвращает: название категории; для неизвестной категории — сам ключ как строку.
+// Принимает: ничего.
+// Делает: ищет русское название в каталоге.
+// Возвращает: название; для неизвестной категории сам ключ.
 func (category Category) Label() string {
 	for _, option := range categoryOptions {
 		if option.key == category {
@@ -44,9 +42,9 @@ func (category Category) Label() string {
 	return string(category)
 }
 
-// Принимает: ничего (получатель — категория).
-// Делает: проверяет, что категория входит в закрытый набор домена.
-// Возвращает: true, если категория известна, иначе false.
+// Принимает: ничего.
+// Делает: ищет категорию в закрытом наборе.
+// Возвращает: true, если категория известна.
 func (category Category) IsValid() bool {
 	for _, option := range categoryOptions {
 		if option.key == category {
@@ -57,8 +55,8 @@ func (category Category) IsValid() bool {
 }
 
 // Принимает: ничего.
-// Делает: собирает ключи категорий из каталога в новый срез, не раскрывая внутренний каталог.
-// Возвращает: копию среза категорий в стабильном порядке.
+// Делает: копирует ключи каталога в новый срез.
+// Возвращает: категории в стабильном порядке.
 func Categories() []Category {
 	categories := make([]Category, len(categoryOptions))
 	for index, option := range categoryOptions {
@@ -68,7 +66,7 @@ func Categories() []Category {
 }
 
 // Принимает: value — строка с ключом категории.
-// Делает: проверяет, что ключ принадлежит закрытому набору.
+// Делает: проверяет, что ключ входит в закрытый набор.
 // Возвращает: Category либо ErrUnknownCategory.
 func ParseCategory(value string) (Category, error) {
 	category := Category(value)

@@ -16,31 +16,27 @@ const (
 	defaultLLMModel   = "gpt-4.1-mini"
 	defaultAuthFile   = "data/chatgpt-auth.json"
 
-	// AuthAPIKey — доступ к модели по ключу API.
 	AuthAPIKey = "apikey"
-	// AuthOAuth — доступ по входу через аккаунт ChatGPT (подписка).
-	AuthOAuth = "oauth"
+	AuthOAuth  = "oauth"
 )
 
-// Config — все настройки приложения; адаптеры получают из него только нужные им поля.
 type Config struct {
-	DatabaseURL      string
-	HTTPAddr         string
-	TelegramToken    string
-	AllowedUserIDs   map[int64]struct{}
-	LLMBaseURL       string
-	LLMAPIKey        string
-	LLMModel         string
-	LLMAuth          string
-	LLMAuthFile      string
-	Location         *time.Location
-	TelegramEnabled  bool
-	RequestedZoneKey string
+	DatabaseURL     string
+	HTTPAddr        string
+	TelegramToken   string
+	AllowedUserIDs  map[int64]struct{}
+	LLMBaseURL      string
+	LLMAPIKey       string
+	LLMModel        string
+	LLMAuth         string
+	LLMAuthFile     string
+	Location        *time.Location
+	TelegramEnabled bool
 }
 
-// Принимает: getenv — функция чтения переменной окружения (os.Getenv в приложении, словарь в тестах).
-// Делает: читает настройки, подставляет значения по умолчанию и проверяет обязательные и взаимозависимые поля.
-// Возвращает: готовую Config либо ошибку со всеми найденными проблемами сразу.
+// Принимает: getenv — чтение переменной окружения (os.Getenv или словарь в тестах).
+// Делает: читает настройки, подставляет значения по умолчанию, проверяет обязательные и связанные поля.
+// Возвращает: Config либо ошибку со всеми найденными проблемами сразу.
 func Load(getenv func(string) string) (Config, error) {
 	read := func(key, fallback string) string {
 		if value := strings.TrimSpace(getenv(key)); value != "" {
@@ -50,15 +46,15 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 
 	cfg := Config{
-		DatabaseURL:      read("DATABASE_URL", ""),
-		HTTPAddr:         read("HTTP_ADDR", defaultHTTPAddr),
-		TelegramToken:    read("TELEGRAM_BOT_TOKEN", ""),
-		LLMBaseURL:       read("LLM_BASE_URL", defaultLLMBaseURL),
-		LLMAPIKey:        read("LLM_API_KEY", ""),
-		LLMAuth:          strings.ToLower(read("LLM_AUTH", AuthAPIKey)),
-		LLMAuthFile:      read("LLM_AUTH_FILE", defaultAuthFile),
-		RequestedZoneKey: read("TZ", defaultTimeZone),
+		DatabaseURL:   read("DATABASE_URL", ""),
+		HTTPAddr:      read("HTTP_ADDR", defaultHTTPAddr),
+		TelegramToken: read("TELEGRAM_BOT_TOKEN", ""),
+		LLMBaseURL:    read("LLM_BASE_URL", defaultLLMBaseURL),
+		LLMAPIKey:     read("LLM_API_KEY", ""),
+		LLMAuth:       strings.ToLower(read("LLM_AUTH", AuthAPIKey)),
+		LLMAuthFile:   read("LLM_AUTH_FILE", defaultAuthFile),
 	}
+	zone := read("TZ", defaultTimeZone)
 	cfg.TelegramEnabled = cfg.TelegramToken != ""
 	// В режиме подписки модель по умолчанию выбирается из списка, доступного аккаунту.
 	if cfg.LLMAuth == AuthAPIKey {
@@ -72,9 +68,9 @@ func Load(getenv func(string) string) (Config, error) {
 		problems = append(problems, errors.New("DATABASE_URL is required"))
 	}
 
-	location, err := time.LoadLocation(cfg.RequestedZoneKey)
+	location, err := time.LoadLocation(zone)
 	if err != nil {
-		problems = append(problems, fmt.Errorf("TZ %q is not a valid time zone: %w", cfg.RequestedZoneKey, err))
+		problems = append(problems, fmt.Errorf("TZ %q is not a valid time zone: %w", zone, err))
 	}
 	cfg.Location = location
 
@@ -99,7 +95,7 @@ func Load(getenv func(string) string) (Config, error) {
 }
 
 // Принимает: raw — строка Telegram ID через запятую, например "1, 2".
-// Делает: разбирает список разрешённых пользователей; пустая строка означает «разрешены все».
+// Делает: разбирает список; пустая строка означает «разрешены все».
 // Возвращает: множество ID либо ошибку для нечисловых и неположительных значений.
 func parseUserIDs(raw string) (map[int64]struct{}, error) {
 	ids := make(map[int64]struct{})
@@ -118,8 +114,8 @@ func parseUserIDs(raw string) (map[int64]struct{}, error) {
 }
 
 // Принимает: userID — Telegram ID автора сообщения.
-// Делает: проверяет доступ по списку ALLOWED_USER_IDS; пустой список разрешает всех.
-// Возвращает: true, если пользователю можно пользоваться ботом.
+// Делает: проверяет доступ по ALLOWED_USER_IDS; пустой список разрешает всех.
+// Возвращает: true, если пользователь допущен.
 func (cfg Config) IsUserAllowed(userID int64) bool {
 	if len(cfg.AllowedUserIDs) == 0 {
 		return true

@@ -8,10 +8,9 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/ports"
 )
 
-// updateExpenseTool частично меняет трату владельца сообщения.
 type updateExpenseTool struct{}
 
-// updateExpenseArguments — аргументы update_expense; владельца задаёт только область UserExpenses.
+// Владельца задаёт только область UserExpenses.
 type updateExpenseArguments struct {
 	ID       int64    `json:"id"`
 	Amount   *float64 `json:"amount"`
@@ -20,9 +19,6 @@ type updateExpenseArguments struct {
 	Comment  *string  `json:"comment"`
 }
 
-// Принимает: ничего.
-// Делает: описывает инструмент update_expense: id и любые изменяемые поля.
-// Возвращает: ToolSpec с обязательным id.
 func (tool updateExpenseTool) Spec() ports.ToolSpec {
 	return ports.ToolSpec{
 		Name:        "update_expense",
@@ -37,9 +33,9 @@ func (tool updateExpenseTool) Spec() ports.ToolSpec {
 	}
 }
 
-// Принимает: ctx — контекст запроса; expenses — траты владельца сообщения; arguments — JSON от модели.
-// Делает: собирает частичное изменение и применяет его, только если трата принадлежит владельцу.
-// Возвращает: обновлённую трату в виде expenseView либо ошибку аргументов, валидации или «не найдено».
+// Принимает: ctx; expenses; arguments — JSON от модели.
+// Делает: собирает частичное изменение и применяет к трате владельца.
+// Возвращает: expenseView обновлённой траты либо ошибку аргументов, валидации или «не найдено».
 func (tool updateExpenseTool) Execute(ctx context.Context, expenses ports.UserExpenses, arguments json.RawMessage) (any, error) {
 	var args updateExpenseArguments
 	if err := decodeArguments(arguments, &args); err != nil {
@@ -60,9 +56,9 @@ func (tool updateExpenseTool) Execute(ctx context.Context, expenses ports.UserEx
 	return newExpenseView(updated), nil
 }
 
-// Принимает: args — разобранные аргументы update_expense.
-// Делает: собирает значения домена только для переданных полей и проверяет, что есть хотя бы одно изменение.
-// Возвращает: domain.Changes либо ArgumentError или доменную ошибку значения.
+// Принимает: args — разобранные аргументы.
+// Делает: собирает значения домена только для переданных полей, требует хотя бы одно.
+// Возвращает: domain.Changes либо ArgumentError или доменную ошибку.
 func (tool updateExpenseTool) buildChanges(args updateExpenseArguments) (domain.Changes, error) {
 	var changes domain.Changes
 	if args.Amount != nil {

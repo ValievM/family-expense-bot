@@ -18,16 +18,12 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/service/expense"
 )
 
-// scriptedLLM отдаёт заготовленные ответы по очереди и запоминает все запросы.
 type scriptedLLM struct {
 	replies  []ports.Message
 	requests []ports.Request
 	err      error
 }
 
-// Принимает: _ — контекст не используется; request — очередной запрос агента.
-// Делает: сохраняет запрос и достаёт следующий заготовленный ответ.
-// Возвращает: ответ из очереди либо ошибку, заданную в тесте; когда очередь пуста, возвращает тестовую ошибку.
 func (llm *scriptedLLM) Complete(_ context.Context, request ports.Request) (ports.Message, error) {
 	llm.requests = append(llm.requests, request)
 	if llm.err != nil {
@@ -41,36 +37,23 @@ func (llm *scriptedLLM) Complete(_ context.Context, request ports.Request) (port
 	return reply, nil
 }
 
-// Принимает: id — идентификатор вызова; name — имя инструмента; arguments — JSON аргументов.
-// Делает: собирает ответ модели с одним вызовом инструмента.
-// Возвращает: сообщение ассистента с ToolCalls.
 func toolCall(id, name, arguments string) ports.Message {
 	return ports.Message{Role: ports.RoleAssistant, ToolCalls: []ports.ToolCall{{ID: id, Name: name, Arguments: json.RawMessage(arguments)}}}
 }
 
-// Принимает: content — текст финального ответа.
-// Делает: собирает финальный ответ модели без вызовов инструментов.
-// Возвращает: сообщение ассистента.
 func say(content string) ports.Message {
 	return ports.Message{Role: ports.RoleAssistant, Content: content}
 }
 
-// memoryRepository — хранилище трат в памяти для тестов; реализует ports.ExpenseRepository.
 type memoryRepository struct {
 	records map[domain.ExpenseID]domain.Expense
 	nextID  domain.ExpenseID
 }
 
-// Принимает: ничего.
-// Делает: создаёт пустое хранилище.
-// Возвращает: указатель на хранилище.
 func newMemoryRepository() *memoryRepository {
 	return &memoryRepository{records: make(map[domain.ExpenseID]domain.Expense)}
 }
 
-// Принимает: _ — контекст не используется; item — трата без ID.
-// Делает: присваивает следующий ID и сохраняет трату.
-// Возвращает: сохранённую трату и nil.
 func (repository *memoryRepository) Create(_ context.Context, item domain.Expense) (domain.Expense, error) {
 	repository.nextID++
 	item = item.WithID(repository.nextID)
@@ -78,9 +61,6 @@ func (repository *memoryRepository) Create(_ context.Context, item domain.Expens
 	return item, nil
 }
 
-// Принимает: _ — контекст не используется; id — идентификатор траты.
-// Делает: ищет трату по ID.
-// Возвращает: трату либо ports.ErrNotFound.
 func (repository *memoryRepository) Get(_ context.Context, id domain.ExpenseID) (domain.Expense, error) {
 	item, found := repository.records[id]
 	if !found {
@@ -89,9 +69,6 @@ func (repository *memoryRepository) Get(_ context.Context, id domain.ExpenseID) 
 	return item, nil
 }
 
-// Принимает: _ — контекст не используется; filter — фильтры списка.
-// Делает: отбирает траты по владельцу, категории и периоду и сортирует по дате и ID по убыванию.
-// Возвращает: список трат и nil.
 func (repository *memoryRepository) List(_ context.Context, filter ports.ListFilter) ([]domain.Expense, error) {
 	items := make([]domain.Expense, 0, len(repository.records))
 	for _, item := range repository.records {
@@ -118,9 +95,6 @@ func (repository *memoryRepository) List(_ context.Context, filter ports.ListFil
 	return items, nil
 }
 
-// Принимает: _ — контекст не используется.
-// Делает: собирает уникальных владельцев трат.
-// Возвращает: отсортированные ID и nil.
 func (repository *memoryRepository) ListUserIDs(_ context.Context) ([]domain.UserID, error) {
 	seen := make(map[domain.UserID]struct{})
 	userIDs := make([]domain.UserID, 0)
@@ -134,9 +108,6 @@ func (repository *memoryRepository) ListUserIDs(_ context.Context) ([]domain.Use
 	return userIDs, nil
 }
 
-// Принимает: _ — контекст не используется; item — трата с ID.
-// Делает: заменяет сохранённую трату.
-// Возвращает: новую трату либо ports.ErrNotFound.
 func (repository *memoryRepository) Update(_ context.Context, item domain.Expense) (domain.Expense, error) {
 	if _, found := repository.records[item.ID()]; !found {
 		return domain.Expense{}, ports.ErrNotFound
@@ -145,9 +116,6 @@ func (repository *memoryRepository) Update(_ context.Context, item domain.Expens
 	return item, nil
 }
 
-// Принимает: _ — контекст не используется; id — идентификатор траты.
-// Делает: удаляет трату.
-// Возвращает: nil либо ports.ErrNotFound.
 func (repository *memoryRepository) Delete(_ context.Context, id domain.ExpenseID) error {
 	if _, found := repository.records[id]; !found {
 		return ports.ErrNotFound
@@ -156,22 +124,16 @@ func (repository *memoryRepository) Delete(_ context.Context, id domain.ExpenseI
 	return nil
 }
 
-// fixedClock всегда показывает одно и то же время.
 type fixedClock struct{ now time.Time }
 
-// Проверки на этапе компиляции: фейки реализуют порты.
 var (
 	_ ports.ExpenseRepository = (*memoryRepository)(nil)
 	_ ports.Clock             = fixedClock{}
 	_ ports.LLM               = (*scriptedLLM)(nil)
 )
 
-// Принимает: ничего.
-// Делает: отдаёт зафиксированное время.
-// Возвращает: время из теста.
 func (clock fixedClock) Now() time.Time { return clock.now }
 
-// harness собирает агента, сервис и хранилище для сценария.
 type harness struct {
 	agent      *agent.Agent
 	llm        *scriptedLLM
@@ -179,9 +141,6 @@ type harness struct {
 	now        time.Time
 }
 
-// Принимает: t — тестовый контекст; replies — заготовленные ответы модели.
-// Делает: собирает агента на сервисе трат с памятью в хранилище и сегодняшним днём 16 октября 2026 (пятница) в Москве.
-// Возвращает: harness для сценария.
 func newHarness(t *testing.T, replies ...ports.Message) *harness {
 	t.Helper()
 	moscow := time.FixedZone("MSK", 3*60*60)
@@ -198,9 +157,6 @@ func newHarness(t *testing.T, replies ...ports.Message) *harness {
 	}
 }
 
-// Принимает: t — тестовый контекст; userID — владелец; id — желаемый ID; amount — копейки; category — категория; date — день YYYY-MM-DD.
-// Делает: восстанавливает трату через домен и кладёт её прямо в хранилище, минуя агента.
-// Возвращает: ничего.
 func (h *harness) seed(t *testing.T, userID int64, id domain.ExpenseID, amount int64, category domain.Category, date string) {
 	t.Helper()
 	owner := domaintest.UserID(t, userID)
@@ -216,9 +172,6 @@ func (h *harness) seed(t *testing.T, userID int64, id domain.ExpenseID, amount i
 	}
 }
 
-// Принимает: t — тестовый контекст; request — запрос агента к модели.
-// Делает: ищет в запросе сообщения роли tool.
-// Возвращает: содержимое всех tool-сообщений по порядку.
 func toolMessages(t *testing.T, request ports.Request) []string {
 	t.Helper()
 	var contents []string
@@ -230,9 +183,7 @@ func toolMessages(t *testing.T, request ports.Request) []string {
 	return contents
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что «кофе 350» создаёт трату владельца в копейках с сегодняшней датой, а промпт содержит дату и категории.
-// Возвращает: ничего.
+// Проверяет: «кофе 350» создаёт трату владельца в копейках с сегодняшней датой, а промпт содержит дату и категории.
 func TestHandleAddsExpenseForTrustedUser(t *testing.T) {
 	h := newHarness(t,
 		toolCall("c1", "add_expense", `{"amount":350,"category":"food","comment":"кофе"}`),
@@ -262,9 +213,7 @@ func TestHandleAddsExpenseForTrustedUser(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что инструменты передаются модели без поля user_id в схемах.
-// Возвращает: ничего.
+// Проверяет: инструменты передаются модели без поля user_id в схемах.
 func TestToolSchemasNeverExposeUserID(t *testing.T) {
 	h := newHarness(t, say("ok"))
 
@@ -283,9 +232,7 @@ func TestToolSchemasNeverExposeUserID(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что list_expenses считает итог кодом, а не моделью, и отдаёт latest_id.
-// Возвращает: ничего.
+// Проверяет: list_expenses считает итог кодом, а не моделью, и отдаёт latest_id.
 func TestListReturnsComputedTotalAndLatestID(t *testing.T) {
 	h := newHarness(t,
 		toolCall("c1", "list_expenses", `{"category":"food","from":"2026-10-01","to":"2026-10-31"}`),
@@ -313,9 +260,7 @@ func TestListReturnsComputedTotalAndLatestID(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет сценарий «последнее было не 350, а 450»: список, затем частичное обновление найденной траты.
-// Возвращает: ничего.
+// Проверяет: сценарий «последнее было не 350, а 450»: список, затем частичное обновление найденной траты.
 func TestUpdateLastExpenseAfterListing(t *testing.T) {
 	h := newHarness(t,
 		toolCall("c1", "list_expenses", `{}`),
@@ -334,9 +279,7 @@ func TestUpdateLastExpenseAfterListing(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что удаление по id работает у владельца и возвращает описание удалённой траты.
-// Возвращает: ничего.
+// Проверяет: удаление по id работает у владельца и возвращает описание удалённой траты.
 func TestDeleteOwnExpense(t *testing.T) {
 	h := newHarness(t, toolCall("c1", "delete_expense", `{"id":1}`), say("Удалил такси."))
 	h.seed(t, 42, 1, 120000, domain.CategoryTransport, "2026-10-15")
@@ -353,9 +296,7 @@ func TestDeleteOwnExpense(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет изоляцию: чужую трату нельзя изменить или удалить даже зная её id, а ответ модели не раскрывает её существование.
-// Возвращает: ничего.
+// Проверяет: изоляцию: чужую трату нельзя изменить или удалить даже зная её id, а ответ модели не раскрывает её существование.
 func TestAgentCannotTouchForeignExpenseByID(t *testing.T) {
 	h := newHarness(t,
 		toolCall("c1", "delete_expense", `{"id":9}`),
@@ -378,9 +319,7 @@ func TestAgentCannotTouchForeignExpenseByID(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет защиту от prompt injection: модель пытается передать user_id другого пользователя, вызов отклоняется, данные чужого не видны.
-// Возвращает: ничего.
+// Проверяет: защиту от prompt injection: модель пытается передать user_id другого пользователя, вызов отклоняется, данные чужого не видны.
 func TestInjectedUserIDArgumentIsRejected(t *testing.T) {
 	h := newHarness(t,
 		toolCall("c1", "list_expenses", `{"user_id":7}`),
@@ -403,9 +342,7 @@ func TestInjectedUserIDArgumentIsRejected(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что ошибки валидации возвращаются модели как данные, а не прерывают диалог.
-// Возвращает: ничего.
+// Проверяет: ошибки валидации возвращаются модели как данные, а не прерывают диалог.
 func TestRecoverableErrorsAreReturnedToModel(t *testing.T) {
 	h := newHarness(t,
 		toolCall("c1", "add_expense", `{"amount":-5,"category":"food"}`),
@@ -433,9 +370,7 @@ func TestRecoverableErrorsAreReturnedToModel(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет лимит шагов: бесконечные вызовы инструментов завершаются ErrStepLimit.
-// Возвращает: ничего.
+// Проверяет: лимит шагов: бесконечные вызовы инструментов завершаются ErrStepLimit.
 func TestHandleStopsAtStepLimit(t *testing.T) {
 	replies := make([]ports.Message, 0, 10)
 	for range 10 {
@@ -453,9 +388,7 @@ func TestHandleStopsAtStepLimit(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что ошибка провайдера модели поднимается наверх и ничего не сохраняется в историю.
-// Возвращает: ничего.
+// Проверяет: ошибка провайдера модели поднимается наверх и ничего не сохраняется в историю.
 func TestHandlePropagatesLLMError(t *testing.T) {
 	h := newHarness(t)
 	h.llm.err = errors.New("provider down")
@@ -467,9 +400,7 @@ func TestHandlePropagatesLLMError(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет память диалога: вторая реплика получает предыдущий вопрос и ответ, а история не смешивается между пользователями.
-// Возвращает: ничего.
+// Проверяет: память диалога: вторая реплика получает предыдущий вопрос и ответ, а история не смешивается между пользователями.
 func TestConversationMemoryIsPerUser(t *testing.T) {
 	h := newHarness(t, say("Какое именно такси?"), say("Понял"), say("Привет"))
 	ctx := context.Background()
@@ -492,9 +423,7 @@ func TestConversationMemoryIsPerUser(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет запасной ответ, когда модель вернула пустой текст без инструментов.
-// Возвращает: ничего.
+// Проверяет: запасной ответ, когда модель вернула пустой текст без инструментов.
 func TestHandleFallsBackOnEmptyAnswer(t *testing.T) {
 	h := newHarness(t, say(""))
 
@@ -508,9 +437,7 @@ func TestHandleFallsBackOnEmptyAnswer(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что недопустимый Telegram ID отклоняется до любого обращения к модели.
-// Возвращает: ничего.
+// Проверяет: недопустимый Telegram ID отклоняется до любого обращения к модели.
 func TestHandleRejectsInvalidUserBeforeModelCall(t *testing.T) {
 	h := newHarness(t, say("ok"))
 

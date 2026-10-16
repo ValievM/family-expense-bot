@@ -1,4 +1,4 @@
-// Package ports — интерфейсы и объекты передачи данных между слоями: сервисы и адаптеры зависят только от них и от domain.
+// Package ports — интерфейсы и DTO между слоями; сервисы и адаптеры зависят только от них и от domain.
 package ports
 
 import (
@@ -7,7 +7,7 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/domain"
 )
 
-// ListFilter — фильтры списка: владелец, категория и включительный период в календарных днях.
+// ListFilter — nil-поля не фильтруют; период From..To включительный.
 type ListFilter struct {
 	Owner    *domain.UserID
 	Category *domain.Category
@@ -15,7 +15,7 @@ type ListFilter struct {
 	To       *domain.Day
 }
 
-// CreateInput — данные создания расхода; пустой SpentOn означает «сегодня».
+// CreateInput — пустой SpentOn означает «сегодня».
 type CreateInput struct {
 	Owner    domain.UserID
 	Amount   domain.Money
@@ -24,7 +24,7 @@ type CreateInput struct {
 	Comment  domain.Comment
 }
 
-// UserCreateInput — данные создания расхода от имени пользователя; владельца задаёт область UserExpenses.
+// UserCreateInput — как CreateInput, но владельца задаёт UserExpenses.
 type UserCreateInput struct {
 	Amount   domain.Money
 	Category domain.Category

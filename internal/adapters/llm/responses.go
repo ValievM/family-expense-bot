@@ -21,7 +21,7 @@ const maxStreamLine = 1 << 20
 // ErrNoModels означает, что аккаунту не доступна ни одна модель из списка.
 var ErrNoModels = errors.New("no models are available for this account")
 
-// ResponsesClient общается с Responses API (POST {base}/responses) в потоковом режиме; так работает оплата подпиской ChatGPT.
+// ResponsesClient — потоковый клиент Responses API; так работает оплата подпиской ChatGPT.
 type ResponsesClient struct {
 	baseURL    string
 	authorizer Authorizer
@@ -32,12 +32,11 @@ type ResponsesClient struct {
 	model      string
 }
 
-// Проверка на этапе компиляции: ResponsesClient реализует порт LLM.
 var _ ports.LLM = (*ResponsesClient)(nil)
 
-// Принимает: baseURL — корень API; model — slug модели, пустая строка означает «взять первую доступную аккаунту»; authorizer — выдаёт заголовки авторизации; options — настройки.
-// Делает: создаёт клиента с тем же набором настроек, что и у Client.
-// Возвращает: ResponsesClient.
+// Принимает: корень API, slug модели (пусто — первая доступная аккаунту), авторизатор и опции.
+// Делает: создаёт клиента с теми же настройками, что и у Client.
+// Возвращает: *ResponsesClient.
 func NewResponsesClient(baseURL, model string, authorizer Authorizer, options ...Option) *ResponsesClient {
 	base := NewClient(baseURL, model, authorizer, options...)
 	return &ResponsesClient{
@@ -47,8 +46,8 @@ func NewResponsesClient(baseURL, model string, authorizer Authorizer, options ..
 }
 
 // Принимает: ctx — контекст; request — разговор и инструменты.
-// Делает: выбирает модель, отправляет запрос потоком и собирает ответ ассистента с повтором при временных сбоях.
-// Возвращает: сообщение ассистента (текст и/или вызовы инструментов) либо ошибку.
+// Делает: выбирает модель, отправляет запрос потоком и собирает ответ; временные сбои повторяет.
+// Возвращает: сообщение ассистента (текст и/или вызовы инструментов) или ошибку.
 func (client *ResponsesClient) Complete(ctx context.Context, request ports.Request) (ports.Message, error) {
 	model, err := client.resolveModel(ctx)
 	if err != nil {
@@ -65,8 +64,8 @@ func (client *ResponsesClient) Complete(ctx context.Context, request ports.Reque
 }
 
 // Принимает: ctx — контекст.
-// Делает: возвращает заданную модель или один раз запрашивает список моделей аккаунта и берёт первую с visibility=list.
-// Возвращает: slug модели либо ErrNoModels и ошибки запроса.
+// Делает: берёт заданную модель или один раз запрашивает список аккаунта и берёт первую с visibility=list.
+// Возвращает: slug модели, ErrNoModels или ошибку запроса.
 func (client *ResponsesClient) resolveModel(ctx context.Context) (string, error) {
 	client.modelMutex.Lock()
 	defer client.modelMutex.Unlock()
@@ -110,7 +109,7 @@ func (client *ResponsesClient) resolveModel(ctx context.Context) (string, error)
 
 // Принимает: ctx — контекст; payload — тело запроса.
 // Делает: отправляет запрос и читает поток событий до response.completed.
-// Возвращает: собранное сообщение либо *APIError при HTTP-отказе или ошибку потока.
+// Возвращает: собранное сообщение, *APIError при HTTP-отказе или ошибку потока.
 func (client *ResponsesClient) stream(ctx context.Context, payload []byte) (ports.Message, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, client.baseURL+"/responses", bytes.NewReader(payload))
 	if err != nil {
@@ -135,7 +134,7 @@ func (client *ResponsesClient) stream(ctx context.Context, payload []byte) (port
 
 // Принимает: response — ответ с ошибочным статусом.
 // Делает: читает короткий фрагмент тела и достаёт error.code, error.message или detail.
-// Возвращает: *APIError со статусом и кодом, пригодным для логов (без токенов).
+// Возвращает: *APIError со статусом и кодом, безопасным для логов (без токенов).
 func readAPIError(response *http.Response) error {
 	body, _ := io.ReadAll(io.LimitReader(response.Body, maxErrorBody))
 	var parsed struct {
@@ -160,7 +159,7 @@ func readAPIError(response *http.Response) error {
 }
 
 // Принимает: err — ошибка попытки.
-// Делает: решает, стоит ли повторять: временные сбои 5xx и 429, кроме исчерпанного лимита подписки.
+// Делает: разрешает повтор для 5xx и 429, кроме исчерпанного лимита подписки.
 // Возвращает: true, если повтор имеет смысл.
 func retryableResponse(err error) bool {
 	var apiErr *APIError
@@ -174,8 +173,8 @@ func retryableResponse(err error) bool {
 }
 
 // Принимает: body — поток server-sent events.
-// Делает: разбирает события: накапливает текст из output_text.delta, вызовы функций из output_item.done и ждёт response.completed.
-// Возвращает: сообщение ассистента либо ошибку для response.failed, response.incomplete, error и оборванного потока.
+// Делает: копит текст из output_text.delta и вызовы функций из output_item.done до response.completed.
+// Возвращает: сообщение ассистента или ошибку для response.failed, response.incomplete, error и обрыва.
 func readEventStream(body io.Reader) (ports.Message, error) {
 	reader := bufio.NewReaderSize(body, 64*1024)
 	message := ports.Message{Role: ports.RoleAssistant}

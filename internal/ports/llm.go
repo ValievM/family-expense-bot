@@ -5,10 +5,8 @@ import (
 	"encoding/json"
 )
 
-// Role — автор сообщения разговора.
 type Role string
 
-// Роли разговора, понятные циклу агента и любому адаптеру модели.
 const (
 	RoleSystem    Role = "system"
 	RoleUser      Role = "user"
@@ -16,14 +14,13 @@ const (
 	RoleTool      Role = "tool"
 )
 
-// ToolCall — вызов функции, запрошенный моделью; Arguments — сырой JSON, который инструмент обязан проверить сам.
+// ToolCall — Arguments — сырой JSON, который tool обязан проверить сам.
 type ToolCall struct {
 	ID        string
 	Name      string
 	Arguments json.RawMessage
 }
 
-// Message — нейтральная к провайдеру запись разговора.
 type Message struct {
 	Role       Role
 	Content    string
@@ -31,14 +28,13 @@ type Message struct {
 	ToolCallID string     // заполнено у сообщений роли tool: на какой вызов это ответ
 }
 
-// ToolSpec — описание функции для модели; Parameters — JSON Schema объекта аргументов.
+// ToolSpec — Parameters — JSON Schema аргументов.
 type ToolSpec struct {
 	Name        string
 	Description string
 	Parameters  json.RawMessage
 }
 
-// Request — один раунд запроса к модели.
 type Request struct {
 	Messages []Message
 	Tools    []ToolSpec

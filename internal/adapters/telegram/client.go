@@ -12,7 +12,6 @@ import (
 	"time"
 )
 
-// Адрес Bot API по умолчанию и сроки сетевых вызовов.
 const (
 	defaultBaseURL = "https://api.telegram.org"
 	// requestTimeout ограничивает короткие вызовы; long polling получает свой срок поверх интервала ожидания.
@@ -20,26 +19,21 @@ const (
 	pollSlack      = 10 * time.Second
 )
 
-// Client — минимальный клиент Bot API на стандартной библиотеке.
 type Client struct {
 	token      string
 	baseURL    string
 	httpClient *http.Client
 }
 
-// ClientOption настраивает Client.
 type ClientOption func(*Client)
 
-// Принимает: baseURL — корень API, например адрес тестового сервера.
-// Делает: заменяет адрес Bot API.
-// Возвращает: ClientOption.
 func WithBaseURL(baseURL string) ClientOption {
 	return func(client *Client) { client.baseURL = strings.TrimRight(baseURL, "/") }
 }
 
-// Принимает: token — токен бота от BotFather; options — необязательные настройки.
-// Делает: создаёт клиент без общего таймаута, потому что сроки задаются контекстом каждого запроса.
-// Возвращает: готовый Client.
+// Принимает: token — токен бота; options — настройки.
+// Делает: создаёт клиент без общего таймаута: сроки задаются контекстом каждого запроса.
+// Возвращает: *Client.
 func NewClient(token string, options ...ClientOption) *Client {
 	client := &Client{token: token, baseURL: defaultBaseURL, httpClient: &http.Client{}}
 	for _, option := range options {
@@ -48,7 +42,6 @@ func NewClient(token string, options ...ClientOption) *Client {
 	return client
 }
 
-// apiResponse — общий конверт ответа Bot API.
 type apiResponse struct {
 	OK          bool            `json:"ok"`
 	Result      json.RawMessage `json:"result"`
@@ -56,9 +49,9 @@ type apiResponse struct {
 	ErrorCode   int             `json:"error_code"`
 }
 
-// Принимает: ctx — контекст остановки; offset — ID первого нужного обновления; timeoutSeconds — сколько секунд Telegram держит запрос открытым.
+// Принимает: ctx; offset — ID первого нужного обновления; timeoutSeconds — сколько Telegram держит запрос.
 // Делает: запрашивает новые обновления методом getUpdates.
-// Возвращает: список обновлений (возможно пустой) либо ошибку без токена.
+// Возвращает: обновления (возможно пустые) или ошибку без токена.
 func (client *Client) GetUpdates(ctx context.Context, offset int64, timeoutSeconds int) ([]Update, error) {
 	timeout := time.Duration(timeoutSeconds)*time.Second + pollSlack
 	var updates []Update
@@ -69,23 +62,17 @@ func (client *Client) GetUpdates(ctx context.Context, offset int64, timeoutSecon
 	return updates, nil
 }
 
-// Принимает: ctx — контекст запроса; chatID — чат получателя; text — текст сообщения.
-// Делает: отправляет обычное текстовое сообщение методом sendMessage.
-// Возвращает: nil либо ошибку без токена.
 func (client *Client) SendMessage(ctx context.Context, chatID int64, text string) error {
 	return client.call(ctx, "sendMessage", requestTimeout, map[string]any{"chat_id": chatID, "text": text}, nil)
 }
 
-// Принимает: ctx — контекст запроса; chatID — чат получателя.
-// Делает: показывает индикатор «печатает…» методом sendChatAction.
-// Возвращает: nil либо ошибку без токена.
 func (client *Client) SendTyping(ctx context.Context, chatID int64) error {
 	return client.call(ctx, "sendChatAction", requestTimeout, map[string]any{"chat_id": chatID, "action": "typing"}, nil)
 }
 
-// Принимает: ctx — контекст запроса; method — имя метода Bot API; timeout — срок вызова; payload — тело запроса; result — куда разобрать result или nil.
-// Делает: выполняет POST с JSON, проверяет конверт ответа и убирает токен из любых ошибок.
-// Возвращает: nil либо ошибку, не содержащую URL с токеном.
+// Принимает: ctx; method — метод Bot API; timeout — срок вызова; payload — тело; result — куда разобрать result или nil.
+// Делает: POST с JSON, проверка конверта ответа, удаление токена из любых ошибок.
+// Возвращает: nil или ошибку без URL с токеном.
 func (client *Client) call(ctx context.Context, method string, timeout time.Duration, payload any, result any) error {
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -123,14 +110,14 @@ func (client *Client) call(ctx context.Context, method string, timeout time.Dura
 }
 
 // Принимает: method — имя метода Bot API.
-// Делает: собирает адрес вида {base}/bot{token}/{method}; токен живёт только здесь.
+// Делает: собирает {base}/bot{token}/{method}; токен живёт только здесь.
 // Возвращает: полный URL.
 func (client *Client) endpoint(method string) string {
 	return client.baseURL + "/bot" + client.token + "/" + method
 }
 
 // Принимает: err — ошибка транспорта.
-// Делает: если это *url.Error, оставляет только внутреннюю причину, потому что URL содержит токен бота.
+// Делает: для *url.Error оставляет только внутреннюю причину, потому что URL содержит токен.
 // Возвращает: ошибку, безопасную для логов.
 func redact(err error) error {
 	var urlErr *url.Error

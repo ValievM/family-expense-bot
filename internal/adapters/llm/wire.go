@@ -53,8 +53,8 @@ type chatResponse struct {
 }
 
 // Принимает: model — имя модели; request — запрос агента.
-// Делает: переводит запрос агента в формат chat completions; при наличии инструментов ставит tool_choice=auto.
-// Возвращает: chatRequest для отправки провайдеру.
+// Делает: переводит запрос в формат chat completions; при наличии инструментов ставит tool_choice=auto.
+// Возвращает: chatRequest для провайдера.
 func newChatRequest(model string, request ports.Request) chatRequest {
 	wire := chatRequest{Model: model, Messages: make([]chatMessage, 0, len(request.Messages))}
 	for _, message := range request.Messages {
@@ -73,11 +73,11 @@ func newChatRequest(model string, request ports.Request) chatRequest {
 }
 
 // Принимает: message — сообщение агента.
-// Делает: переводит сообщение в провайдерский формат; у ассистентского сообщения только с вызовами инструментов content остаётся null, как требуют многие провайдеры.
+// Делает: переводит его в формат провайдера.
 // Возвращает: chatMessage.
 func toChatMessage(message ports.Message) chatMessage {
 	wire := chatMessage{Role: string(message.Role), ToolCallID: message.ToolCallID}
-	// Assistant messages that only request tools carry null content, which several providers require.
+	// У ассистентского сообщения только с вызовами инструментов content должен быть null — так требуют многие провайдеры.
 	if message.Content != "" || len(message.ToolCalls) == 0 {
 		content := message.Content
 		wire.Content = &content
@@ -93,7 +93,7 @@ func toChatMessage(message ports.Message) chatMessage {
 }
 
 // Принимает: ничего.
-// Делает: берёт первый choice ответа и переводит его в сообщение ассистента вместе с вызовами инструментов.
+// Делает: берёт первый choice и переводит его в сообщение ассистента с вызовами инструментов.
 // Возвращает: ports.Message или ErrEmptyResponse, если choices пуст.
 func (response chatResponse) assistantMessage() (ports.Message, error) {
 	if len(response.Choices) == 0 {

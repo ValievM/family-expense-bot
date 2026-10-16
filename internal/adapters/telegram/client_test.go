@@ -11,9 +11,7 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/adapters/telegram"
 )
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет адрес вызова с токеном, тело запроса и разбор списка обновлений.
-// Возвращает: ничего.
+// Проверяет: адрес вызова с токеном, тело запроса и разбор списка обновлений.
 func TestGetUpdatesCallsBotAPI(t *testing.T) {
 	var path string
 	var body map[string]any
@@ -37,9 +35,7 @@ func TestGetUpdatesCallsBotAPI(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что отказ Bot API превращается в ошибку с кодом и описанием.
-// Возвращает: ничего.
+// Проверяет: отказ Bot API превращается в ошибку с кодом и описанием.
 func TestSendMessageReportsAPIFailure(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"ok":false,"error_code":403,"description":"Forbidden: bot was blocked by the user"}`))
@@ -53,9 +49,7 @@ func TestSendMessageReportsAPIFailure(t *testing.T) {
 	}
 }
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет безопасность: при сетевой ошибке токен бота не попадает в текст ошибки, который уходит в логи.
-// Возвращает: ничего.
+// Проверяет: при сетевой ошибке токен бота не попадает в текст ошибки.
 func TestTransportErrorsNeverLeakTheToken(t *testing.T) {
 	server := httptest.NewServer(http.NotFoundHandler())
 	url := server.URL

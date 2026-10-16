@@ -5,9 +5,7 @@ import (
 	"testing"
 )
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что ошибки валидации не совпадают друг с другом через errors.Is.
-// Возвращает: ничего.
+// Проверяет: ошибки валидации различимы через errors.Is.
 func TestValidationErrorsRemainDistinct(t *testing.T) {
 	validationErrors := []error{
 		ErrInvalidAmount,
