@@ -81,15 +81,16 @@ LLM_MODEL=qwen2.5:7b
 
 ## Архитектура
 
-Ports and adapters (hexagonal): зависимости направлены только внутрь, `adapters → service → domain`.
+Ports and adapters (hexagonal). Все интерфейсы между слоями лежат в `internal/ports`; сервисы и адаптеры зависят только от `ports` и `domain`, а не друг от друга (адаптеры не импортируют ни одного сервиса, всё соединяется в `cmd/server`).
 
 ```
 cmd/server/            точка входа и единственное место сборки зависимостей
 internal/
+  ports/               интерфейсы между слоями и их DTO (репозиторий, LLM, часы, Responder, ...)
   domain/              агрегат Expense, объекты-значения Money, Day, UserID, Comment, Category (только stdlib)
   service/
-    expense/           сценарии (use cases), порт Repository, привязка к владельцу
-    agent/             ядро ИИ-агента: цикл, промпт, память, порт LLM, контракт Tool
+    expense/           сценарии (use cases) над агрегатом, привязка к владельцу
+    agent/             ядро ИИ-агента: цикл, промпт, память диалога, набор инструментов
       tools/           инструменты агента (add/list/update/delete), подключаются в main
   adapters/
     postgres/          Repository на pgx + миграции goose
@@ -122,13 +123,14 @@ flowchart LR
 | **Изоляция пользователей по конструкции** | `service/expense/user_expenses.go`, `service/agent/user_expenses.go` | `service.ForUser(id)` возвращает тип без параметра владельца; агент получает только интерфейс `UserExpenses`, неограниченных методов у него нет. `user_id` берётся из Telegram и никогда не приходит от модели |
 | **Защита от prompt injection** | `service/agent/tools/args.go` | аргументы инструментов разбираются строго (`DisallowUnknownFields`): лишнее поле `user_id` отклоняется, в схемах инструментов его нет; есть тесты |
 | **Command / Strategy + реестр** | `service/agent/tool.go` (контракт и `ToolSet`), `service/agent/tools/` (реализации) | новый инструмент = новый тип `Tool`, цикл агента не меняется (OCP) |
-| **Repository** | `service/expense/repository.go`, `adapters/postgres` | сервис знает только интерфейс (DIP); интерфейс объявляет потребитель |
+| **Ports and adapters** | `ports/`, `adapters/*` | сервисы и адаптеры знают только интерфейсы из `ports` (DIP); реализацию подставляет `cmd/server` |
+| **Repository** | `ports.ExpenseRepository`, `adapters/postgres` | один репозиторий на агрегат |
 | **Adapter** | `adapters/llm`, `adapters/telegram` | внешние API спрятаны за маленькими интерфейсами (ISP) |
 | **Functional options** | `agent.New`, `llm.NewClient`, `telegram.NewBot` | настройка без раздутых конструкторов |
 | **Внедрение зависимостей вручную** | `cmd/server/main.go` | без DI-фреймворков, всё видно в одном месте |
 | **Таблица правил ошибок** | `adapters/httpapi/errors.go` | новая бизнес-ошибка = одна строка в таблице |
 | **Единый источник категорий** | `domain/category.go` | из него берутся валидация, enum в схемах инструментов, промпт, `/api/categories`, фронтенд |
-| **Внедряемые часы** | `service/expense/clock.go` | детерминированные тесты и «сегодня» в нужном часовом поясе |
+| **Внедряемые часы** | `ports.Clock`, `adapters/systemclock` | детерминированные тесты и «сегодня» в нужном часовом поясе |
 | **DRY** | один `expense.Service` | REST и агент используют общие правила, частичное обновление (`Patch`) и значение даты по умолчанию |
 
 Решения, которые стоит знать:
