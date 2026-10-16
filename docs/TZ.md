@@ -36,29 +36,35 @@
 
 ```
 cmd/server/main.go            — композиция зависимостей (единственное место, где всё соединяется)
+cmd/chatgpt-login/            — однократный вход через ChatGPT для режима LLM_AUTH=oauth
 internal/
-  domain/                     — Expense, Category, ошибки, валидация. Ничего не импортирует.
+  ports/                      — интерфейсы между слоями, их DTO и общие ошибки
+  domain/                     — агрегат Expense, объекты-значения Money, Day, UserID, Comment, Category, Member. Только stdlib.
   service/
-    expense/                  — use cases + порт Repository. Знает только domain.
-    agent/                    — LLM-агент: цикл, промпт, память, порт LLM. Зависит от service/expense.
+    expense/                  — use cases над агрегатом, привязка к владельцу (UserExpenses).
+    member/                   — каталог членов семьи: запоминает имена из Telegram.
+    agent/                    — ядро ИИ-агента: цикл, промпт, память диалога, набор инструментов.
       tools/                  — инструменты агента (подключаются снаружи, в main).
   adapters/
-    postgres/                 — реализация Repository
-    llm/                      — OpenAI-совместимый клиент
-    telegram/                 — приём/отправка сообщений
+    postgres/                 — репозитории трат и членов семьи (pgx), миграции goose
     httpapi/                  — REST-хендлеры, DTO
+    llm/                      — клиенты Chat Completions и Responses API
+    chatgpt/                  — вход через ChatGPT (OAuth + PKCE), токены
+    telegram/                 — long polling, очередь сообщений по пользователям
+    systemclock/              — часы
   config/
 migrations/
+scripts/                      — сквозная проверка собранного стека (smoke)
 web/                          — фронтенд
 ```
 
-Правило зависимостей: стрелки только внутрь (`adapters → ports ← service → domain`); интерфейсы лежат в `internal/ports`. Агент находится в `internal/service/agent`; интерфейсы объявляет тот, кто их использует.
+Правило зависимостей: стрелки только внутрь (`adapters → ports ← service → domain`); интерфейсы лежат в `internal/ports`. Агент находится в `internal/service/agent`.
 
 Как применяем принципы (чтобы это можно было показать ревьюеру):
 
 - **SRP** — один пакет, одна причина для изменения; хендлер не знает про SQL.
 - **OCP** — новые инструменты агента добавляются новым типом `Tool`, цикл агента не меняется.
-- **LSP/ISP** — маленькие интерфейсы (`Repository` 6 методов, `LLM` 1 метод).
+- **LSP/ISP** — маленькие интерфейсы (`ExpenseRepository` 6 методов, `LLM` 1 метод).
 - **DIP** — сервис зависит от интерфейса репозитория, Postgres подставляется в `main`.
 - **DRY** — один `ExpenseService` обслуживает и REST, и агента; один фильтр `ListFilter` везде.
 - **KISS / YAGNI** — никаких CQRS, event bus, DI-фреймворков.
@@ -76,9 +82,9 @@ web/                          — фронтенд
 | POST | `/api/expenses` | создание (`user_id` в теле обязателен) |
 | PATCH | `/api/expenses/{id}` | частичное изменение |
 | DELETE | `/api/expenses/{id}` | удаление, 204 |
-| GET | `/api/users` | список `user_id` с тратами (для фильтра) |
+| GET | `/api/users` | члены семьи: владельцы трат и все, кто писал боту (`user_id`, `name`, `username`) |
 | GET | `/api/categories` | закрытый список категорий с русскими метками (фронт не дублирует его) |
-| GET | `/healthz` | проверка живости |
+| GET | `/healthz` | проверка живости и доступности базы (503, если база не отвечает) |
 
 Ошибки: единый JSON `{"error": {"code": "...", "message": "..."}}`. Коды: 400 валидация, 404 не найдено.
 Контракт зафиксирован в `docs/openapi.yaml`. Сумма в API всегда целое число копеек.

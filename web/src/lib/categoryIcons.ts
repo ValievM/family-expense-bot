@@ -1,4 +1,4 @@
-/** Контуры иконок 24×24 (stroke, currentColor), как в прототипе «Журнал». */
+/** Контуры иконок 24×24 (stroke, currentColor). */
 const PATHS: Record<string, string> = {
   food: 'M5 3v7 M8 3v7 M3 3v5a3 3 0 0 0 6 0 M6 11v10 M17 3c-4 4-4 10 0 10h2 M19 3v18',
   transport:

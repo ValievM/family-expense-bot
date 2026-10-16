@@ -11,16 +11,24 @@ servers:
 paths:
   /healthz:
     get:
-      summary: Liveness probe
+      summary: Liveness and database readiness probe
       responses:
         "200":
-          description: Service is alive
+          description: Service and database are available
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   status: { type: string, example: ok }
+        "503":
+          description: The database does not respond
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: unavailable }
   /api/categories:
     get:
       summary: Closed list of expense categories with display labels

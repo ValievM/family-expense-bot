@@ -47,7 +47,7 @@ package "domain (предметная область, DDD)" {
   class Money <<value object>> {
     -kopecks : int64
     +NewMoney(kopecks) : Money, error
-    +MoneyFromRubles(float64) : Money, error
+    +ParseRubles(string) : Money, error
     +Kopecks() : int64
     +IsPositive() : bool
     +Add(Money) : Money
@@ -76,6 +76,15 @@ package "domain (предметная область, DDD)" {
     +Label() : string
     +IsValid() : bool
     +Categories() : []Category
+  }
+  class Member <<entity>> {
+    -id : UserID
+    -name : string
+    -username : string
+    +NewMember(UserID, name, username) : Member, error
+    +ID() : UserID
+    +Name() : string
+    +Username() : string
   }
   class Changes <<value object>> {
     +Amount : *Money
@@ -132,7 +141,7 @@ package "service/agent (ИИ-агент)" {
     -clock : Clock
     -location : *time.Location
     -maxSteps : int
-    +New(LLM, ScopeFactory, ...Option) : *Agent
+    +New(LLM, ScopeFactory, *ToolSet, Clock, ...Option) : *Agent
     +Handle(ctx, userID, text) : string, error
     -runTool(ctx, userID, expenses, ToolCall) : string, error
   }
@@ -234,11 +243,32 @@ package "ports (порты: интерфейсы между слоями)" {
   interface Clock <<interface>> {
     +Now() : time.Time
   }
+  interface MemberRepository <<interface>> {
+    +Upsert(ctx, Member) : error
+    +List(ctx) : []Member, error
+  }
+  interface MemberDirectory <<interface>> {
+    +Remember(ctx, userID, name, username) : error
+  }
+  interface MemberCatalog <<interface>> {
+    +List(ctx) : []Member, error
+  }
+  interface Pinger <<interface>> {
+    +Ping(ctx) : error
+  }
   interface Responder <<interface>> {
     +Handle(ctx, userID, text) : string, error
   }
   interface AccessPolicy <<interface>> {
     +IsUserAllowed(userID) : bool
+  }
+}
+
+package "service/member (каталог членов семьи)" {
+  class MemberService {
+    -repository : MemberRepository
+    +Remember(ctx, userID, name, username) : error
+    +List(ctx) : []Member, error
   }
 }
 
@@ -261,9 +291,19 @@ package "adapters/postgres" {
   }
 }
 
+package "adapters/postgres (члены семьи)" {
+  class PostgresMemberRepository {
+    -pool : *pgxpool.Pool
+    +Upsert(ctx, Member) : error
+    +List(ctx) : []Member, error
+  }
+}
+
 package "adapters/httpapi" {
   class HTTPServer {
     -expenses : ExpenseService
+    -members : MemberCatalog
+    -health : Pinger
     -location : *time.Location
     -logger : *slog.Logger
     +Handler() : http.Handler
@@ -340,15 +380,19 @@ package "adapters/telegram" {
     +GetUpdates(ctx, offset, timeout) : []Update, error
     +SendMessage(ctx, chatID, text) : error
     +SendTyping(ctx, chatID) : error
+    +SendHTML(ctx, chatID, html) : error
+    +SetProfile(ctx, Profile) : error
   }
   class Bot {
     -gateway : Gateway
     -responder : Responder
     -access : AccessPolicy
+    -directory : MemberDirectory
     -queues : sync.Map
     +NewBot(Gateway, Responder, AccessPolicy, ...BotOption) : *Bot
     +Run(ctx) : error
     -dispatch(ctx, Message)
+    -safeHandle(ctx, Message)
     -handle(ctx, Message)
   }
   class TelegramClient {
@@ -358,6 +402,8 @@ package "adapters/telegram" {
     +GetUpdates(ctx, offset, timeout) : []Update, error
     +SendMessage(ctx, chatID, text) : error
     +SendTyping(ctx, chatID) : error
+    +SendHTML(ctx, chatID, html) : error
+    +SetProfile(ctx, Profile) : error
   }
   class Update <<value object>> {
     +UpdateID : int64
@@ -443,6 +489,16 @@ Bot "1" --> "1" Gateway
 Bot "1" --> "1" Responder
 Bot "1" --> "1" AccessPolicy
 Gateway ..> Update
+
+' ===== Члены семьи и проверка базы =====
+Member "1" *-- "1" UserID
+MemberService ..|> MemberDirectory
+MemberService ..|> MemberCatalog
+MemberService "1" --> "1" MemberRepository
+PostgresMemberRepository ..|> MemberRepository
+HTTPServer "1" --> "1" MemberCatalog
+HTTPServer "1" --> "1" Pinger
+Bot "1" --> "0..1" MemberDirectory
 
 note bottom of UserExpenses
   Изоляция пользователей по конструкции: у типа нет
