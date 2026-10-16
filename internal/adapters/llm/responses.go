@@ -32,8 +32,6 @@ type ResponsesClient struct {
 	model      string
 }
 
-var _ ports.LLM = (*ResponsesClient)(nil)
-
 // Принимает: корень API, slug модели (пусто — первая доступная аккаунту), авторизатор и опции.
 // Делает: создаёт клиента с теми же настройками, что и у Client.
 // Возвращает: *ResponsesClient.
@@ -219,3 +217,5 @@ func readEventStream(body io.Reader) (ports.Message, error) {
 	message.Content = text.String()
 	return message, nil
 }
+
+var _ ports.LLM = (*ResponsesClient)(nil)

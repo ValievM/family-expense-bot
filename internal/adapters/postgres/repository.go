@@ -21,8 +21,6 @@ type Repository struct {
 	pool *pgxpool.Pool
 }
 
-var _ ports.ExpenseRepository = (*Repository)(nil)
-
 func NewRepository(pool *pgxpool.Pool) *Repository {
 	return &Repository{pool: pool}
 }
@@ -226,3 +224,5 @@ func scanExpense(row rowScanner) (domain.Expense, error) {
 func toPostgresDate(day domain.Day) pgtype.Date {
 	return pgtype.Date{Time: day.Time(), Valid: true}
 }
+
+var _ ports.ExpenseRepository = (*Repository)(nil)

@@ -126,12 +126,6 @@ func (repository *memoryRepository) Delete(_ context.Context, id domain.ExpenseI
 
 type fixedClock struct{ now time.Time }
 
-var (
-	_ ports.ExpenseRepository = (*memoryRepository)(nil)
-	_ ports.Clock             = fixedClock{}
-	_ ports.LLM               = (*scriptedLLM)(nil)
-)
-
 func (clock fixedClock) Now() time.Time { return clock.now }
 
 type harness struct {
@@ -450,3 +444,9 @@ func TestHandleRejectsInvalidUserBeforeModelCall(t *testing.T) {
 		t.Errorf("model calls = %d, want 0", len(h.llm.requests))
 	}
 }
+
+var (
+	_ ports.ExpenseRepository = (*memoryRepository)(nil)
+	_ ports.Clock             = fixedClock{}
+	_ ports.LLM               = (*scriptedLLM)(nil)
+)

@@ -10,11 +10,6 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/ports"
 )
 
-var (
-	_ ports.ExpenseService = (*Service)(nil)
-	_ ports.UserExpenses   = UserExpenses{}
-)
-
 // Service координирует сценарии над агрегатом; инварианты проверяет домен.
 type Service struct {
 	repository ports.ExpenseRepository
@@ -149,3 +144,8 @@ func (service *Service) apply(ctx context.Context, current domain.Expense, chang
 	}
 	return saved, nil
 }
+
+var (
+	_ ports.ExpenseService = (*Service)(nil)
+	_ ports.UserExpenses   = UserExpenses{}
+)

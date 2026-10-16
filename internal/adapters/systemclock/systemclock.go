@@ -9,8 +9,8 @@ import (
 
 type Clock struct{}
 
-var _ ports.Clock = Clock{}
-
 func (Clock) Now() time.Time {
 	return time.Now()
 }
+
+var _ ports.Clock = Clock{}

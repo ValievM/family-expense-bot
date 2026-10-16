@@ -45,8 +45,6 @@ func (stub *stubExpenses) Update(ctx context.Context, id domain.ExpenseID, chang
 
 func (stub *stubExpenses) Delete(context.Context, domain.ExpenseID) error { return nil }
 
-var _ ports.UserExpenses = (*stubExpenses)(nil)
-
 func manyExpenses(t *testing.T, count int) []domain.Expense {
 	t.Helper()
 	owner := domaintest.UserID(t, 7)
@@ -154,3 +152,5 @@ func TestInvalidArgumentsAreRecoverable(t *testing.T) {
 		})
 	}
 }
+
+var _ ports.UserExpenses = (*stubExpenses)(nil)

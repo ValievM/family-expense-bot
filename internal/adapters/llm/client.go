@@ -38,8 +38,6 @@ type Client struct {
 	backoff    func(attempt int) time.Duration
 }
 
-var _ ports.LLM = (*Client)(nil)
-
 type Option func(*Client)
 
 func WithBackoff(backoff func(attempt int) time.Duration) Option {
@@ -132,3 +130,5 @@ func sleep(ctx context.Context, duration time.Duration) error {
 		return nil
 	}
 }
+
+var _ ports.LLM = (*Client)(nil)
