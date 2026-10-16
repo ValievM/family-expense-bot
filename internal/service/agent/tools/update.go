@@ -12,11 +12,11 @@ type updateExpenseTool struct{}
 
 // Владельца задаёт только область UserExpenses.
 type updateExpenseArguments struct {
-	ID       int64    `json:"id"`
-	Amount   *float64 `json:"amount"`
-	Category *string  `json:"category"`
-	Date     *string  `json:"date"`
-	Comment  *string  `json:"comment"`
+	ID       int64       `json:"id"`
+	Amount   *amountText `json:"amount"`
+	Category *string     `json:"category"`
+	Date     *string     `json:"date"`
+	Comment  *string     `json:"comment"`
 }
 
 func (tool updateExpenseTool) Spec() ports.ToolSpec {
@@ -62,7 +62,7 @@ func (tool updateExpenseTool) Execute(ctx context.Context, expenses ports.UserEx
 func (tool updateExpenseTool) buildChanges(args updateExpenseArguments) (domain.Changes, error) {
 	var changes domain.Changes
 	if args.Amount != nil {
-		amount, err := domain.MoneyFromRubles(*args.Amount)
+		amount, err := domain.ParseRubles(string(*args.Amount))
 		if err != nil {
 			return changes, err
 		}

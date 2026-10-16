@@ -69,3 +69,25 @@ func categoryProperty() map[string]any {
 func dateProperty(description string) map[string]any {
 	return map[string]any{"type": "string", "description": description + " Формат YYYY-MM-DD."}
 }
+
+// amountText хранит сумму в рублях как текст из JSON: принимает и число (99.9), и строку ("99,90"), чтобы не проходить через float.
+type amountText string
+
+// Принимает: data — JSON-значение: число или строка.
+// Делает: сохраняет литерал как текст без преобразования в число с плавающей точкой.
+// Возвращает: nil либо ошибку, если значение не число и не строка.
+func (amount *amountText) UnmarshalJSON(data []byte) error {
+	if len(data) > 0 && data[0] == '"' {
+		var text string
+		if err := json.Unmarshal(data, &text); err != nil {
+			return err
+		}
+		*amount = amountText(text)
+		return nil
+	}
+	if len(data) == 0 || data[0] == '{' || data[0] == '[' || string(data) == "null" || string(data) == "true" || string(data) == "false" {
+		return fmt.Errorf("amount must be a number or a string")
+	}
+	*amount = amountText(data)
+	return nil
+}

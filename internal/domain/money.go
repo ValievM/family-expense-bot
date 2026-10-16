@@ -2,13 +2,15 @@ package domain
 
 import (
 	"fmt"
-	"math"
+	"strconv"
+	"strings"
 )
 
 const (
 	// maxRubles — верхняя граница суммы: защита от переполнения при переводе в копейки.
-	maxRubles  = 1_000_000_000
-	maxKopecks = maxRubles * 100
+	maxRubles      = 1_000_000_000
+	maxKopecks     = maxRubles * 100
+	maxWholeDigits = 10 // длина maxRubles, чтобы целая часть не переполнила int64
 )
 
 type Money struct {
@@ -25,18 +27,47 @@ func NewMoney(kopecks int64) (Money, error) {
 	return Money{kopecks: kopecks}, nil
 }
 
-// Принимает: rubles — сумма в рублях, возможно дробная (99.9).
-// Делает: переводит в копейки с округлением до целой копейки.
-// Возвращает: Money либо ErrInvalidAmount (NaN, Inf, ноль, отрицательные, слишком большие).
-func MoneyFromRubles(rubles float64) (Money, error) {
-	if math.IsNaN(rubles) || math.IsInf(rubles, 0) || rubles <= 0 || rubles > maxRubles {
+// Принимает: text — положительная сумма в рублях десятичной записью: "350", "99.9", "99,90".
+// Делает: разбирает рубли и копейки целыми числами, без float; больше двух знаков после запятой не принимается.
+// Возвращает: Money либо ErrInvalidAmount (пусто, знак, экспонента, ноль, слишком много знаков, слишком большая сумма).
+func ParseRubles(text string) (Money, error) {
+	whole, fraction, hasFraction := strings.Cut(strings.ReplaceAll(strings.TrimSpace(text), ",", "."), ".")
+	if !isDigits(whole) || len(whole) > maxWholeDigits {
 		return Money{}, ErrInvalidAmount
 	}
-	kopecks := int64(math.Round(rubles * 100))
-	if kopecks <= 0 {
+	if !hasFraction {
+		fraction = "00"
+	}
+	if !isDigits(fraction) || len(fraction) > 2 {
 		return Money{}, ErrInvalidAmount
 	}
-	return Money{kopecks: kopecks}, nil
+	fraction += strings.Repeat("0", 2-len(fraction))
+
+	rubles, err := strconv.ParseInt(whole, 10, 64)
+	if err != nil {
+		return Money{}, ErrInvalidAmount
+	}
+	kopecks, err := strconv.ParseInt(fraction, 10, 64)
+	if err != nil {
+		return Money{}, ErrInvalidAmount
+	}
+	money, err := NewMoney(rubles*100 + kopecks)
+	if err != nil || !money.IsPositive() {
+		return Money{}, ErrInvalidAmount
+	}
+	return money, nil
+}
+
+func isDigits(text string) bool {
+	if text == "" {
+		return false
+	}
+	for _, char := range text {
+		if char < '0' || char > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func (money Money) Kopecks() int64 {

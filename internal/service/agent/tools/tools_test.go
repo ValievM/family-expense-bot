@@ -16,13 +16,16 @@ import (
 )
 
 type stubExpenses struct {
-	items   []domain.Expense
-	changes domain.Changes
-	updated bool
+	created      domain.Expense
+	createdInput ports.UserCreateInput
+	items        []domain.Expense
+	changes      domain.Changes
+	updated      bool
 }
 
-func (stub *stubExpenses) Create(context.Context, ports.UserCreateInput) (domain.Expense, error) {
-	return domain.Expense{}, nil
+func (stub *stubExpenses) Create(_ context.Context, input ports.UserCreateInput) (domain.Expense, error) {
+	stub.createdInput = input
+	return stub.created, nil
 }
 
 func (stub *stubExpenses) Get(_ context.Context, id domain.ExpenseID) (domain.Expense, error) {
@@ -135,6 +138,8 @@ func TestInvalidArgumentsAreRecoverable(t *testing.T) {
 		{"add_expense", `{"amount":350,"category":"food","user_id":7}`},
 		{"add_expense", `{"amount":-5,"category":"food"}`},
 		{"add_expense", `{"amount":5,"category":"pets"}`},
+		{"add_expense", `{"amount":1.005,"category":"food"}`},
+		{"add_expense", `{"amount":"abc","category":"food"}`},
 		{"add_expense", `{"amount":5,"category":"food","date":"вчера"}`},
 		{"list_expenses", `{"from":"2026-13-01"}`},
 		{"list_expenses", `{"category":"pets"}`},
@@ -154,3 +159,21 @@ func TestInvalidArgumentsAreRecoverable(t *testing.T) {
 }
 
 var _ ports.UserExpenses = (*stubExpenses)(nil)
+
+// Проверяет: сумма принимается и числом, и строкой, с точкой и запятой, без потери копеек (никакого float).
+func TestAddAcceptsExactAmountsInSeveralForms(t *testing.T) {
+	for arguments, want := range map[string]string{
+		`{"amount":99.9,"category":"food"}`:    "99.90",
+		`{"amount":"99,90","category":"food"}`: "99.90",
+		`{"amount":350,"category":"food"}`:     "350.00",
+	} {
+		stub := &stubExpenses{created: manyExpenses(t, 1)[0]}
+
+		if _, err := tool(t, "add_expense").Execute(context.Background(), stub, json.RawMessage(arguments)); err != nil {
+			t.Fatalf("%s: Execute() error = %v", arguments, err)
+		}
+		if got := stub.createdInput.Amount.String(); got != want {
+			t.Errorf("%s: amount = %s, want %s", arguments, got, want)
+		}
+	}
+}

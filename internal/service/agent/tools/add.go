@@ -12,10 +12,10 @@ type addExpenseTool struct{}
 
 // user_id намеренно нет: владелец берётся из области, не от модели.
 type addExpenseArguments struct {
-	Amount   float64 `json:"amount"`
-	Category string  `json:"category"`
-	Date     *string `json:"date"`
-	Comment  string  `json:"comment"`
+	Amount   amountText `json:"amount"`
+	Category string     `json:"category"`
+	Date     *string    `json:"date"`
+	Comment  string     `json:"comment"`
 }
 
 func (tool addExpenseTool) Spec() ports.ToolSpec {
@@ -39,7 +39,7 @@ func (tool addExpenseTool) Execute(ctx context.Context, expenses ports.UserExpen
 	if err := decodeArguments(arguments, &args); err != nil {
 		return nil, err
 	}
-	amount, err := domain.MoneyFromRubles(args.Amount)
+	amount, err := domain.ParseRubles(string(args.Amount))
 	if err != nil {
 		return nil, err
 	}
