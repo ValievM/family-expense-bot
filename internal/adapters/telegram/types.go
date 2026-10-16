@@ -16,8 +16,11 @@ type Message struct {
 
 // User — автор сообщения; его ID считается доверенным владельцем данных.
 type User struct {
-	ID    int64 `json:"id"`
-	IsBot bool  `json:"is_bot"`
+	ID        int64  `json:"id"`
+	IsBot     bool   `json:"is_bot"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+	Username  string `json:"username"`
 }
 
 type Chat struct {

@@ -6,6 +6,7 @@ import type {
   Member,
   UpdateExpense,
 } from './types';
+import { normalizeMember } from '../lib/members';
 
 export class ApiError extends Error {
   readonly status: number;
@@ -64,7 +65,8 @@ export async function fetchCategories(): Promise<Category[]> {
 }
 
 export async function fetchMembers(): Promise<Member[]> {
-  return (await request<{ items: Member[] }>('GET', '/api/users')).items;
+  const items = (await request<{ items?: unknown }>('GET', '/api/users')).items;
+  return Array.isArray(items) ? items.map(normalizeMember).filter((m): m is Member => m !== null) : [];
 }
 
 export async function fetchExpenses(params: ListParams): Promise<Expense[]> {

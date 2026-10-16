@@ -3,7 +3,7 @@ import type { ApiError } from '../api/client';
 import type { Expense } from '../api/types';
 import { bannerMessage, hasTechnicalDetails } from '../lib/apiErrors';
 import { formatDate } from '../lib/date';
-import type { NameMap } from '../lib/members';
+import { memberView, type MemberDirectory } from '../lib/members';
 import { formatRubles } from '../lib/money';
 import { CategoryIcon } from './CategoryIcon';
 import { Dialog } from './Dialog';
@@ -12,14 +12,14 @@ import { Person } from './Person';
 
 interface ConfirmDialogProps {
   expense: Expense;
-  names: NameMap;
+  directory: MemberDirectory;
   deleting: boolean;
   error: ApiError | null;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
-export function ConfirmDialog({ expense: e, names, deleting, error, onConfirm, onCancel }: ConfirmDialogProps) {
+export function ConfirmDialog({ expense: e, directory, deleting, error, onConfirm, onCancel }: ConfirmDialogProps) {
   const cancelRef = useRef<HTMLButtonElement>(null);
   return (
     <Dialog
@@ -54,7 +54,7 @@ export function ConfirmDialog({ expense: e, names, deleting, error, onConfirm, o
           <div>
             <dt>Член семьи</dt>
             <dd>
-              <Person id={e.user_id} names={names} />
+              <Person id={e.user_id} view={memberView(directory, e.user_id)} />
             </dd>
           </div>
           <div>

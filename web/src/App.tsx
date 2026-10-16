@@ -25,6 +25,7 @@ import { bannerMessage, errorTarget, NOT_FOUND_MESSAGE, PERIOD_MESSAGE } from '.
 import { todayISO } from './lib/date';
 import { hasActiveFilters, matchesFilters } from './lib/filters';
 import { groupByDay } from './lib/groupByDay';
+import { buildDirectory, memberView } from './lib/members';
 import { formatRange } from './lib/periods';
 import { totalKopecks } from './lib/total';
 
@@ -57,6 +58,11 @@ export function App() {
   const items = expenses.data;
   const groups = useMemo(() => (items ? groupByDay(items) : []), [items]);
   const people = useMemo(() => new Set((items ?? []).map((e) => e.user_id)).size, [items]);
+  const memberData = members.data;
+  const directory = useMemo(
+    () => buildDirectory((items ?? []).map((e) => e.user_id), memberData ?? [], names),
+    [items, memberData, names],
+  );
   const canAdd = categories.data !== null && members.data !== null;
   const activeCount = (filters.user_id ? 1 : 0) + (filters.category ? 1 : 0) + (filters.from || filters.to ? 1 : 0);
   const periodInvalid = filters.from !== '' && filters.to !== '' && filters.from > filters.to;
@@ -102,12 +108,13 @@ export function App() {
     expenses.reload();
     members.reload();
     flash(saved.id);
-    const base = created ? 'Трата добавлена' : 'Трата изменена';
+    const base = `${created ? 'Трата добавлена' : 'Трата изменена'} · ${memberView(directory, saved.user_id).label}`;
     show(matchesFilters(saved, filters) ? base : `${base}. Она не попадает в текущие фильтры.`);
   };
 
   const confirmDelete = async () => {
     if (!toDelete) return;
+    const who = memberView(directory, toDelete.user_id).label;
     setDeleting(true);
     setDeleteError(null);
     try {
@@ -115,7 +122,7 @@ export function App() {
       closeAll();
       expenses.reload();
       members.reload();
-      show('Трата удалена');
+      show(`Трата удалена · ${who}`);
     } catch (err) {
       const apiErr = asApiError(err);
       if (errorTarget(apiErr.code).kind === 'notFound') onNotFound();
@@ -174,7 +181,7 @@ export function App() {
             key={g.date}
             group={g}
             today={today}
-            names={names}
+            directory={directory}
             highlightId={highlightId}
             onEdit={(e, el) => openForm(e, el)}
             onDelete={openDelete}
@@ -220,7 +227,7 @@ export function App() {
           filters={filters}
           members={memberList}
           categories={categoryList}
-          names={names}
+          directory={directory}
           today={today}
           activeCount={activeCount}
           periodError={periodError}
@@ -242,6 +249,7 @@ export function App() {
             filters={filters}
             categories={categoryList}
             names={names}
+            directory={directory}
             onChange={patchFilters}
             onReset={resetFilters}
             onRename={rename}
@@ -288,6 +296,7 @@ export function App() {
           members={memberList}
           categories={categoryList}
           names={names}
+          directory={directory}
           today={today}
           defaults={defaults}
           onRename={rename}
@@ -305,7 +314,7 @@ export function App() {
       {toDelete && (
         <ConfirmDialog
           expense={toDelete}
-          names={names}
+          directory={directory}
           deleting={deleting}
           error={deleteError}
           onConfirm={() => void confirmDelete()}

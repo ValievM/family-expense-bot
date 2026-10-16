@@ -64,3 +64,35 @@ func TestTransportErrorsNeverLeakTheToken(t *testing.T) {
 		t.Errorf("error leaks the bot token: %v", err)
 	}
 }
+
+// Проверяет: SendHTML отправляет parse_mode HTML, а SetProfile делает три вызова с нужными полями.
+func TestSendHTMLAndSetProfileCallBotAPI(t *testing.T) {
+	bodies := map[string]map[string]any{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		bodies[strings.TrimPrefix(r.URL.Path, "/botTOKEN/")] = body
+		_, _ = w.Write([]byte(`{"ok":true,"result":true}`))
+	}))
+	defer server.Close()
+	client := telegram.NewClient("TOKEN", telegram.WithBaseURL(server.URL))
+
+	if err := client.SendHTML(context.Background(), 42, "<b>Привет</b>"); err != nil {
+		t.Fatalf("SendHTML() error = %v", err)
+	}
+	profile := telegram.Profile{Description: "d", ShortDescription: "s", Commands: []telegram.Command{{Name: "start", Description: "Как пользоваться"}}}
+	if err := client.SetProfile(context.Background(), profile); err != nil {
+		t.Fatalf("SetProfile() error = %v", err)
+	}
+
+	if bodies["sendMessage"]["parse_mode"] != "HTML" || bodies["sendMessage"]["text"] != "<b>Привет</b>" {
+		t.Errorf("sendMessage body = %v", bodies["sendMessage"])
+	}
+	if bodies["setMyDescription"]["description"] != "d" || bodies["setMyShortDescription"]["short_description"] != "s" {
+		t.Errorf("description bodies = %v / %v", bodies["setMyDescription"], bodies["setMyShortDescription"])
+	}
+	commands, _ := bodies["setMyCommands"]["commands"].([]any)
+	if len(commands) != 1 || commands[0].(map[string]any)["command"] != "start" {
+		t.Errorf("setMyCommands body = %v", bodies["setMyCommands"])
+	}
+}

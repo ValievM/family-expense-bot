@@ -13,7 +13,7 @@ import {
   type FormErrors,
   type FormField,
 } from '../lib/expenseForm';
-import type { NameMap } from '../lib/members';
+import { memberView, type MemberDirectory, type NameMap } from '../lib/members';
 import { formatRubles, parseRubles } from '../lib/money';
 import { buildPatch } from '../lib/patch';
 import { CategoryIcon } from './CategoryIcon';
@@ -32,6 +32,7 @@ interface ExpenseFormProps {
   members: Member[];
   categories: Category[];
   names: NameMap;
+  directory: MemberDirectory;
   today: string;
   defaults: { userId: string; category: string };
   onRename: (id: number, name: string) => void;
@@ -44,13 +45,13 @@ interface ExpenseFormProps {
 }
 
 /**
- * Принимает: трату (null — создание), справочники, локальные имена и обработчики.
+ * Принимает: трату (null — создание), справочники, локальные имена, справочник подписей и обработчики.
  * Делает: валидирует как API, раскладывает ошибки сервера по полям, при правке шлёт только изменения,
  *   спрашивает подтверждение перед закрытием с несохранёнными данными.
  * Возвращает: диалог-«лист книги» с формой.
  */
 export function ExpenseForm(props: ExpenseFormProps) {
-  const { expense, members, categories, names, today, defaults } = props;
+  const { expense, members, categories, names, directory, today, defaults } = props;
   const editing = expense !== null;
   const [initial] = useState<ExpenseFormState>(() =>
     expense ? initialForm(expense) : { ...initialForm(null), spentAt: today, ...defaults },
@@ -72,6 +73,8 @@ export function ExpenseForm(props: ExpenseFormProps) {
   const length = commentLength(form.comment);
   const yesterday = addDays(today, -1);
   const now = parseISODate(today);
+  const ownerId = expense ? expense.user_id : !newMember && /^\d+$/.test(form.userId) ? Number(form.userId) : null;
+  const owner = ownerId === null ? null : memberView(directory, ownerId);
 
   const set = (key: FormField, value: string) => {
     setForm((f) => ({ ...f, [key]: value }));
@@ -156,7 +159,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
             </h3>
             <p>
               {expense
-                ? `${expense.category_label} · ${formatDate(expense.spent_at)} · ID ${expense.user_id}`
+                ? `${expense.category_label} · ${formatDate(expense.spent_at)} · ${owner?.label ?? expense.user_id}`
                 : 'Выберите члена семьи и заполните сумму. Запись появится в общем списке.'}
             </p>
           </div>
@@ -195,13 +198,20 @@ export function ExpenseForm(props: ExpenseFormProps) {
                     Член семьи
                   </div>
                   <div className="read-owner" role="group" aria-labelledby="owner-label">
-                    <Person id={expense.user_id} names={names} />
+                    {owner && <Person id={expense.user_id} view={owner} />}
                     <div>
-                      {expense.user_id}
+                      {owner?.details}
                       <small>Владельца существующей траты менять нельзя</small>
                     </div>
                   </div>
-                  <MemberNameEditor id={expense.user_id} name={names[String(expense.user_id)]} onSave={props.onRename} />
+                  {owner && (
+                    <MemberNameEditor
+                      id={expense.user_id}
+                      name={names[String(expense.user_id)]}
+                      label={owner.label}
+                      onSave={props.onRename}
+                    />
+                  )}
                 </>
               ) : (
                 <>
@@ -220,10 +230,10 @@ export function ExpenseForm(props: ExpenseFormProps) {
                       }}
                     >
                       {members.map((m) => {
-                        const name = names[String(m.user_id)];
+                        const view = memberView(directory, m.user_id);
                         return (
-                          <option key={m.user_id} value={String(m.user_id)}>
-                            {name ? `${name} · ${m.user_id}` : m.user_id}
+                          <option key={m.user_id} value={String(m.user_id)} title={view.details}>
+                            {view.name ? view.label : m.user_id}
                           </option>
                         );
                       })}
@@ -250,13 +260,13 @@ export function ExpenseForm(props: ExpenseFormProps) {
                   <p className="helper" id="user-help">
                     {newMember
                       ? 'Telegram ID человека, который ещё не писал боту.'
-                      : 'В списке — Telegram ID членов семьи.'}
+                      : (owner?.details ?? 'В списке — все, кто писал боту или вносил траты.')}
                   </p>
                   <p className="error" id="user-error" role="alert">
                     {errors.userId ?? ''}
                   </p>
-                  {!newMember && /^\d+$/.test(form.userId) && (
-                    <MemberNameEditor id={Number(form.userId)} name={names[form.userId]} onSave={props.onRename} />
+                  {ownerId !== null && owner && (
+                    <MemberNameEditor id={ownerId} name={names[form.userId]} label={owner.label} onSave={props.onRename} />
                   )}
                 </>
               )}

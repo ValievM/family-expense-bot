@@ -25,8 +25,11 @@ export interface Category {
   label: string;
 }
 
+/** name и username приходят из Telegram; пустая строка — неизвестно. */
 export interface Member {
   user_id: number;
+  name: string;
+  username: string;
 }
 
 export interface CreateExpense {

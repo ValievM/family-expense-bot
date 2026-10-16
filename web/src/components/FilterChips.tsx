@@ -1,6 +1,6 @@
 import type { Category } from '../api/types';
 import type { Filters } from '../lib/filters';
-import { memberLabel, type NameMap } from '../lib/members';
+import { memberView, type MemberDirectory, type NameMap } from '../lib/members';
 import { periodChipLabel } from '../lib/periods';
 import { Icon } from './Icon';
 import { MemberNameEditor } from './MemberNameEditor';
@@ -9,17 +9,19 @@ interface FilterChipsProps {
   filters: Filters;
   categories: Category[];
   names: NameMap;
+  directory: MemberDirectory;
   onChange: (patch: Partial<Filters>) => void;
   onReset: () => void;
   onRename: (id: number, name: string) => void;
 }
 
-export function FilterChips({ filters, categories, names, onChange, onReset, onRename }: FilterChipsProps) {
+export function FilterChips({ filters, categories, names, directory, onChange, onReset, onRename }: FilterChipsProps) {
   const memberId = /^\d+$/.test(filters.user_id) ? Number(filters.user_id) : null;
-  const chips: { key: string; label: string; clear: Partial<Filters> }[] = [];
+  const member = memberId === null ? null : memberView(directory, memberId);
+  const chips: { key: string; label: string; title?: string; clear: Partial<Filters> }[] = [];
   if (filters.user_id) {
-    const who = memberId === null ? filters.user_id : memberLabel(memberId, names);
-    chips.push({ key: 'user', label: `Член семьи: ${who}`, clear: { user_id: '' } });
+    const who = member ? member.label : filters.user_id;
+    chips.push({ key: 'user', label: `Член семьи: ${who}`, title: member?.details, clear: { user_id: '' } });
   }
   if (filters.category) {
     const label = categories.find((c) => c.key === filters.category)?.label ?? filters.category;
@@ -37,6 +39,7 @@ export function FilterChips({ filters, categories, names, onChange, onReset, onR
           key={c.key}
           type="button"
           className="chip"
+          title={c.title}
           aria-label={`Сбросить фильтр: ${c.label}`}
           onClick={() => onChange(c.clear)}
         >
@@ -44,8 +47,14 @@ export function FilterChips({ filters, categories, names, onChange, onReset, onR
           <Icon name="close" />
         </button>
       ))}
-      {memberId !== null && (
-        <MemberNameEditor id={memberId} name={names[String(memberId)]} onSave={onRename} className="quiet chip" />
+      {memberId !== null && member && (
+        <MemberNameEditor
+          id={memberId}
+          name={names[String(memberId)]}
+          label={member.label}
+          onSave={onRename}
+          className="quiet chip"
+        />
       )}
       {chips.length > 1 && (
         <button type="button" className="quiet chip" onClick={onReset}>

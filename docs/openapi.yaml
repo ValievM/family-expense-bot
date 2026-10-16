@@ -176,9 +176,11 @@ components:
           type: array
           items:
             type: object
-            required: [user_id]
+            required: [user_id, name, username]
             properties:
               user_id: { type: integer, format: int64 }
+              name: { type: string, description: Display name from the Telegram profile; empty string if unknown }
+              username: { type: string, description: Telegram username without @; empty string if unknown }
     Error:
       type: object
       required: [error]

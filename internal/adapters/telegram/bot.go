@@ -16,8 +16,8 @@ const (
 	retryDelay         = 3 * time.Second
 	handleTimeout      = 90 * time.Second
 	maxMessageRunes    = 4096
+	rememberTimeout    = 3 * time.Second
 
-	greeting       = "Привет! Пишите траты обычным текстом: «кофе 350», «такси 1200 вчера». Можно спросить «сколько потратил на еду в этом месяце», изменить «последнее было не 350, а 450» или удалить «удали такси»."
 	failureReply   = "Что-то пошло не так, попробуйте ещё раз чуть позже."
 	deniedReply    = "У вас нет доступа к этому боту."
 	privateOnlyMsg = "Я работаю только в личных сообщениях."
@@ -27,6 +27,8 @@ type Gateway interface {
 	GetUpdates(ctx context.Context, offset int64, timeoutSeconds int) ([]Update, error)
 	SendMessage(ctx context.Context, chatID int64, text string) error
 	SendTyping(ctx context.Context, chatID int64) error
+	SendHTML(ctx context.Context, chatID int64, html string) error
+	SetProfile(ctx context.Context, profile Profile) error
 }
 
 // Bot читает обновления, фильтрует доступ и отвечает; сообщения одного пользователя идут строго по порядку.
@@ -34,6 +36,7 @@ type Bot struct {
 	gateway   Gateway
 	responder ports.Responder
 	access    ports.AccessPolicy
+	directory ports.MemberDirectory
 	logger    *slog.Logger
 	retry     time.Duration
 	queues    sync.Map // userID -> *userQueue
@@ -50,6 +53,10 @@ type BotOption func(*Bot)
 
 func WithLogger(logger *slog.Logger) BotOption {
 	return func(bot *Bot) { bot.logger = logger }
+}
+
+func WithMemberDirectory(directory ports.MemberDirectory) BotOption {
+	return func(bot *Bot) { bot.directory = directory }
 }
 
 func WithRetryDelay(delay time.Duration) BotOption {
@@ -70,6 +77,10 @@ func NewBot(gateway Gateway, responder ports.Responder, access ports.AccessPolic
 func (bot *Bot) Run(ctx context.Context) error {
 	var inFlight sync.WaitGroup
 	defer inFlight.Wait()
+
+	if err := bot.gateway.SetProfile(ctx, defaultProfile); err != nil {
+		bot.logger.WarnContext(ctx, "telegram bot profile was not updated", "error", err)
+	}
 
 	var offset int64
 	for ctx.Err() == nil {
@@ -133,8 +144,9 @@ func (bot *Bot) handle(ctx context.Context, message Message) {
 		bot.reply(ctx, chatID, deniedReply)
 		return
 	}
-	if isStartCommand(message.Text) {
-		bot.reply(ctx, chatID, greeting)
+	bot.rememberMember(ctx, message.From)
+	if isHelpCommand(message.Text) {
+		bot.replyHTML(ctx, chatID, greetingHTML)
 		return
 	}
 
@@ -152,9 +164,32 @@ func (bot *Bot) handle(ctx context.Context, message Message) {
 	bot.reply(ctx, chatID, answer)
 }
 
+// Принимает: ctx; user — автор сообщения, уже прошедший проверку доступа.
+// Делает: если справочник подключён, запоминает имя и username из профиля Telegram с коротким таймаутом.
+// Возвращает: ничего; сбой пишется в лог и не мешает ответу.
+func (bot *Bot) rememberMember(ctx context.Context, user *User) {
+	if bot.directory == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, rememberTimeout)
+	defer cancel()
+	name := strings.TrimSpace(user.FirstName + " " + user.LastName)
+	if err := bot.directory.Remember(ctx, user.ID, name, user.Username); err != nil {
+		bot.logger.WarnContext(ctx, "remember family member failed", "user_id", user.ID, "error", err)
+	}
+}
+
 // Принимает: ctx; chatID — получатель; text — ответ.
 // Делает: обрезает ответ до лимита Telegram и отправляет; ошибку отправки пишет в лог.
 // Возвращает: ничего.
+func (bot *Bot) replyHTML(ctx context.Context, chatID int64, html string) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), requestTimeout)
+	defer cancel()
+	if err := bot.gateway.SendHTML(ctx, chatID, html); err != nil {
+		bot.logger.ErrorContext(ctx, "telegram send failed", "chat_id", chatID, "error", err)
+	}
+}
+
 func (bot *Bot) reply(ctx context.Context, chatID int64, text string) {
 	// Ответ нужно доставить даже во время остановки, поэтому отмена бота на отправку не действует.
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), requestTimeout)
@@ -205,10 +240,10 @@ func (bot *Bot) dispatch(ctx context.Context, inFlight *sync.WaitGroup, message 
 // Принимает: text — текст сообщения.
 // Делает: узнаёт «/start», «/start payload» и «/start@botname».
 // Возвращает: true для команды /start.
-func isStartCommand(text string) bool {
+func isHelpCommand(text string) bool {
 	first, _, _ := strings.Cut(strings.TrimSpace(text), " ")
 	command, _, _ := strings.Cut(first, "@")
-	return command == "/start"
+	return command == "/start" || command == "/help"
 }
 
 // Принимает: text — исходный текст; limit — максимум символов.

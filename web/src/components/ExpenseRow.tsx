@@ -1,6 +1,6 @@
 import type { KeyboardEvent, MouseEvent } from 'react';
 import type { Expense } from '../api/types';
-import { memberLabel, type NameMap } from '../lib/members';
+import { memberView, type MemberDirectory } from '../lib/members';
 import { formatRubles } from '../lib/money';
 import { CategoryIcon } from './CategoryIcon';
 import { Icon } from './Icon';
@@ -8,16 +8,17 @@ import { Person } from './Person';
 
 interface ExpenseRowProps {
   expense: Expense;
-  names: NameMap;
+  directory: MemberDirectory;
   highlighted: boolean;
   onEdit: (e: Expense, opener: HTMLElement) => void;
   onDelete: (e: Expense, opener: HTMLElement) => void;
 }
 
-export function ExpenseRow({ expense: e, names, highlighted, onEdit, onDelete }: ExpenseRowProps) {
+export function ExpenseRow({ expense: e, directory, highlighted, onEdit, onDelete }: ExpenseRowProps) {
   const amount = formatRubles(e.amount);
   const what = e.comment || e.category_label;
-  const summary = `${e.category_label}, ${amount}, ${memberLabel(e.user_id, names)}, ${e.comment || 'без комментария'}`;
+  const who = memberView(directory, e.user_id);
+  const summary = `${e.category_label}, ${amount}, ${who.label}, ${e.comment || 'без комментария'}`;
 
   const onKeyDown = (ev: KeyboardEvent<HTMLLIElement>) => {
     if (ev.target !== ev.currentTarget || (ev.key !== 'Enter' && ev.key !== ' ')) return;
@@ -38,7 +39,7 @@ export function ExpenseRow({ expense: e, names, highlighted, onEdit, onDelete }:
       onClick={(ev) => onEdit(e, ev.currentTarget)}
       onKeyDown={onKeyDown}
     >
-      <Person id={e.user_id} names={names} />
+      <Person id={e.user_id} view={who} />
       <span className="category">
         <CategoryIcon category={e.category} />
         <span className="category-label">{e.category_label}</span>

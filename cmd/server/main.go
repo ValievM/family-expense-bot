@@ -31,6 +31,7 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/service/agent"
 	"github.com/ValievM/family-expense-bot/internal/service/agent/tools"
 	"github.com/ValievM/family-expense-bot/internal/service/expense"
+	"github.com/ValievM/family-expense-bot/internal/service/member"
 )
 
 const (
@@ -72,7 +73,8 @@ func run() error {
 
 	clock := systemclock.Clock{}
 	service := expense.NewService(postgres.NewRepository(pool), clock, cfg.Location)
-	httpServer := newHTTPServer(cfg.HTTPAddr, httpapi.NewServer(service, pool, logger).Handler())
+	members := member.NewService(postgres.NewMemberRepository(pool))
+	httpServer := newHTTPServer(cfg.HTTPAddr, httpapi.NewServer(service, members, pool, logger).Handler())
 
 	var workers sync.WaitGroup
 	failures := make(chan error, 2)
@@ -85,7 +87,7 @@ func run() error {
 	})
 
 	if cfg.TelegramEnabled {
-		bot, err := newBot(cfg, service, clock, logger)
+		bot, err := newBot(cfg, service, members, clock, logger)
 		if err != nil {
 			return err
 		}
@@ -189,17 +191,18 @@ func waitForDatabase(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 }
 
-// Принимает: cfg; service — сервис трат; clock; logger.
+// Принимает: cfg; service — сервис трат; members — справочник семьи; clock; logger.
 // Делает: собирает LLM-клиент, агент и бота; агенту выдаётся только фабрика трат, привязанных к автору сообщения.
 // Возвращает: бота или ошибку, если выбран вход через ChatGPT, а входа ещё не было.
-func newBot(cfg config.Config, service *expense.Service, clock ports.Clock, logger *slog.Logger) (*telegram.Bot, error) {
+func newBot(cfg config.Config, service *expense.Service, members ports.MemberDirectory,
+	clock ports.Clock, logger *slog.Logger) (*telegram.Bot, error) {
 	model, err := newLLM(cfg)
 	if err != nil {
 		return nil, err
 	}
 	scope := func(owner domain.UserID) ports.UserExpenses { return service.ForUser(owner) }
 	assistant := agent.New(model, scope, tools.Default(), clock, agent.WithLocation(cfg.Location), agent.WithLogger(logger))
-	return telegram.NewBot(telegram.NewClient(cfg.TelegramToken), assistant, cfg, telegram.WithLogger(logger)), nil
+	return telegram.NewBot(telegram.NewClient(cfg.TelegramToken), assistant, cfg, telegram.WithLogger(logger), telegram.WithMemberDirectory(members)), nil
 }
 
 // Принимает: cfg — конфигурация с режимом LLM_AUTH.

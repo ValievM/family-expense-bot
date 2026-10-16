@@ -18,13 +18,16 @@ import (
 type sentMessage struct {
 	chatID int64
 	text   string
+	html   bool
 }
 
 type fakeGateway struct {
-	mutex   sync.Mutex
-	batches [][]telegram.Update
-	sent    chan sentMessage
-	offsets []int64
+	mutex      sync.Mutex
+	batches    [][]telegram.Update
+	sent       chan sentMessage
+	offsets    []int64
+	profiles   []telegram.Profile
+	profileErr error
 }
 
 func newFakeGateway(batches ...[]telegram.Update) *fakeGateway {
@@ -51,6 +54,18 @@ func (gateway *fakeGateway) SendMessage(_ context.Context, chatID int64, text st
 }
 
 func (gateway *fakeGateway) SendTyping(context.Context, int64) error { return nil }
+
+func (gateway *fakeGateway) SendHTML(_ context.Context, chatID int64, html string) error {
+	gateway.sent <- sentMessage{chatID: chatID, text: html, html: true}
+	return nil
+}
+
+func (gateway *fakeGateway) SetProfile(_ context.Context, profile telegram.Profile) error {
+	gateway.mutex.Lock()
+	defer gateway.mutex.Unlock()
+	gateway.profiles = append(gateway.profiles, profile)
+	return gateway.profileErr
+}
 
 type responderFunc func(ctx context.Context, userID int64, text string) (string, error)
 
@@ -259,5 +274,53 @@ func TestBotSurvivesPanicInHandler(t *testing.T) {
 
 	if !strings.Contains(first.text, "Что-то пошло не так") || second.text != "ok" {
 		t.Errorf("replies = %q, %q; want a neutral failure and then ok", first.text, second.text)
+	}
+}
+
+// Проверяет: /start и /help отвечают подсказкой в HTML-разметке (жирный заголовок, примеры в code), не вызывая модель.
+func TestBotGreetsWithFormattedHelp(t *testing.T) {
+	var calls atomic.Int32
+	gateway := newFakeGateway([]telegram.Update{
+		textUpdate(1, 42, "private", "/start"),
+		textUpdate(2, 42, "private", "/help"),
+	})
+	stop := runBot(t, gateway, responderFunc(func(context.Context, int64, string) (string, error) {
+		calls.Add(1)
+		return "x", nil
+	}), allowList{42: true})
+
+	first, second := nextSent(t, gateway), nextSent(t, gateway)
+	stop()
+
+	for _, reply := range []sentMessage{first, second} {
+		if !reply.html || !strings.Contains(reply.text, "<b>") || !strings.Contains(reply.text, "<code>кофе 350</code>") {
+			t.Errorf("reply = %+v, want formatted HTML help", reply)
+		}
+	}
+	if calls.Load() != 0 {
+		t.Errorf("responder called %d times for help commands, want 0", calls.Load())
+	}
+}
+
+// Проверяет: при запуске бот один раз обновляет карточку (описание, короткое описание, команду /start) и не падает, если Telegram отказал.
+func TestBotSetsProfileOnStartAndSurvivesFailure(t *testing.T) {
+	gateway := newFakeGateway([]telegram.Update{textUpdate(1, 42, "private", "привет")})
+	gateway.profileErr = errors.New("telegram is unhappy")
+	stop := runBot(t, gateway, responderFunc(func(context.Context, int64, string) (string, error) { return "ok", nil }), allowList{42: true})
+
+	reply := nextSent(t, gateway)
+	stop()
+
+	gateway.mutex.Lock()
+	defer gateway.mutex.Unlock()
+	if reply.text != "ok" || len(gateway.profiles) != 1 {
+		t.Fatalf("reply = %+v, profiles set = %d; want the bot to keep working and set the profile once", reply, len(gateway.profiles))
+	}
+	profile := gateway.profiles[0]
+	if len([]rune(profile.Description)) > 512 || len([]rune(profile.ShortDescription)) > 120 {
+		t.Errorf("profile texts exceed Telegram limits: %d / %d", len([]rune(profile.Description)), len([]rune(profile.ShortDescription)))
+	}
+	if len(profile.Commands) != 1 || profile.Commands[0].Name != "start" {
+		t.Errorf("commands = %+v, want only /start", profile.Commands)
 	}
 }

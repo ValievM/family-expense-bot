@@ -4,11 +4,12 @@ import { MAX_NAME_LENGTH, shortId } from '../lib/members';
 interface MemberNameEditorProps {
   id: number;
   name: string | undefined;
+  label: string;
   onSave: (id: number, name: string) => void;
   className?: string;
 }
 
-export function MemberNameEditor({ id, name, onSave, className = 'link-btn' }: MemberNameEditorProps) {
+export function MemberNameEditor({ id, name, label, onSave, className = 'link-btn' }: MemberNameEditorProps) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState('');
   const inputId = useId();
@@ -46,8 +47,8 @@ export function MemberNameEditor({ id, name, onSave, className = 'link-btn' }: M
         ref={buttonRef}
         type="button"
         className={className}
-        aria-label={`Переименовать ${name ?? `ID ${shortId(id)}`}`}
-        title="Имя хранится только на этом устройстве"
+        aria-label={`Переименовать ${label}`}
+        title="Своё имя хранится только на этом устройстве и заменяет имя из Telegram"
         onClick={() => {
           setDraft(name ?? '');
           setOpen(true);
@@ -81,7 +82,8 @@ export function MemberNameEditor({ id, name, onSave, className = 'link-btn' }: M
         </button>
       </div>
       <p className="helper" id={hintId}>
-        Имя видно только в этом браузере на этом устройстве. Пустое поле вернёт ID.
+        Имя из Telegram подставляется автоматически. Своё имя хранится только в этом браузере на этом
+        устройстве и заменяет его. Пустое поле вернёт имя из Telegram.
       </p>
     </div>
   );

@@ -1,12 +1,11 @@
-import { memberLabel, type NameMap } from '../lib/members';
+import type { MemberView } from '../lib/members';
 import { Avatar } from './Avatar';
 
-export function Person({ id, names }: { id: number; names: NameMap }) {
-  const label = memberLabel(id, names);
+export function Person({ id, view }: { id: number; view: MemberView }) {
   return (
-    <span className="person" title={`Telegram ID ${id}`}>
-      <Avatar id={id} name={names[String(id)]} />
-      <span className="person-name">{label}</span>
+    <span className="person" title={view.details}>
+      <Avatar id={id} name={view.name} />
+      <span className="person-name">{view.label}</span>
     </span>
   );
 }

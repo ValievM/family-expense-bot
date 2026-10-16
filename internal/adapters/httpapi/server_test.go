@@ -17,6 +17,24 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/ports"
 )
 
+type stubCatalog struct {
+	members []domain.Member
+	err     error
+}
+
+func (stub *stubCatalog) List(context.Context) ([]domain.Member, error) {
+	return stub.members, stub.err
+}
+
+func makeMember(t *testing.T, id int64, name, username string) domain.Member {
+	t.Helper()
+	member, err := domain.NewMember(domaintest.UserID(t, id), name, username)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return member
+}
+
 type stubService struct {
 	created    ports.CreateInput
 	filter     ports.ListFilter
@@ -78,7 +96,12 @@ func (stub *stubService) Delete(_ context.Context, id domain.ExpenseID) error {
 
 func do(t *testing.T, stub *stubService, method, target, body string) *httptest.ResponseRecorder {
 	t.Helper()
-	handler := httpapi.NewServer(stub, pinger{}, slog.New(slog.NewTextHandler(io.Discard, nil))).Handler()
+	return doWithMembers(t, stub, &stubCatalog{}, method, target, body)
+}
+
+func doWithMembers(t *testing.T, stub *stubService, members *stubCatalog, method, target, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	handler := httpapi.NewServer(stub, members, pinger{}, slog.New(slog.NewTextHandler(io.Discard, nil))).Handler()
 	request := httptest.NewRequest(method, target, strings.NewReader(body))
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
@@ -189,13 +212,47 @@ func TestDeleteExpense(t *testing.T) {
 	}
 }
 
-// Проверяет: форму ответов /api/users и /api/categories.
-func TestListUsersAndCategories(t *testing.T) {
-	users := do(t, &stubService{userIDs: []domain.UserID{domaintest.UserID(t, 1), domaintest.UserID(t, 2)}}, http.MethodGet, "/api/users", "")
-	if got := strings.TrimSpace(users.Body.String()); got != `{"items":[{"user_id":1},{"user_id":2}]}` {
-		t.Errorf("users body = %s", got)
+// Проверяет: /api/users объединяет владельцев и участников без дублей, сортирует по user_id и всегда отдаёт name и username.
+func TestListUsers(t *testing.T) {
+	owners := []domain.UserID{domaintest.UserID(t, 5), domaintest.UserID(t, 2)}
+	tests := []struct {
+		name    string
+		owners  []domain.UserID
+		members []domain.Member
+		want    string
+	}{
+		{"owners only", owners, nil, `{"items":[{"user_id":2,"name":"","username":""},{"user_id":5,"name":"","username":""}]}`},
+		{"members only", nil, []domain.Member{makeMember(t, 9, "Анна", "anna"), makeMember(t, 3, "Магомед", "valiev")},
+			`{"items":[{"user_id":3,"name":"Магомед","username":"valiev"},{"user_id":9,"name":"Анна","username":"anna"}]}`},
+		{"overlap deduplicated and sorted", owners, []domain.Member{makeMember(t, 5, "Анна", ""), makeMember(t, 1, "Лев", "lev")},
+			`{"items":[{"user_id":1,"name":"Лев","username":"lev"},{"user_id":2,"name":"","username":""},{"user_id":5,"name":"Анна","username":""}]}`},
+		{"nobody", nil, nil, `{"items":[]}`},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := doWithMembers(t, &stubService{userIDs: tt.owners}, &stubCatalog{members: tt.members}, http.MethodGet, "/api/users", "")
 
+			if got := strings.TrimSpace(recorder.Body.String()); recorder.Code != http.StatusOK || got != tt.want {
+				t.Errorf("status = %d, body = %s, want %s", recorder.Code, got, tt.want)
+			}
+		})
+	}
+}
+
+// Проверяет: сбой справочника участников даёт 500 internal без утечки деталей.
+func TestListUsersMembersFailure(t *testing.T) {
+	recorder := doWithMembers(t, &stubService{}, &stubCatalog{err: io.ErrUnexpectedEOF}, http.MethodGet, "/api/users", "")
+
+	body := decode[struct {
+		Error struct{ Code, Message string }
+	}](t, recorder)
+	if recorder.Code != http.StatusInternalServerError || body.Error.Code != "internal" || strings.Contains(body.Error.Message, "EOF") {
+		t.Errorf("status = %d, body = %s; want 500 internal without details", recorder.Code, recorder.Body)
+	}
+}
+
+// Проверяет: форму ответа /api/categories.
+func TestListCategories(t *testing.T) {
 	categories := decode[struct{ Items []map[string]string }](t, do(t, &stubService{}, http.MethodGet, "/api/categories", "")).Items
 	if len(categories) != len(domain.Categories()) || categories[0]["key"] != "food" || categories[0]["label"] != "еда" {
 		t.Errorf("categories = %v", categories)
@@ -270,7 +327,7 @@ func TestHealth(t *testing.T) {
 
 // Проверяет: при недоступной базе /healthz отвечает 503 и не раскрывает причину.
 func TestHealthReportsDatabaseOutage(t *testing.T) {
-	handler := httpapi.NewServer(&stubService{}, pinger{err: io.ErrClosedPipe}, slog.New(slog.NewTextHandler(io.Discard, nil))).Handler()
+	handler := httpapi.NewServer(&stubService{}, &stubCatalog{}, pinger{err: io.ErrClosedPipe}, slog.New(slog.NewTextHandler(io.Discard, nil))).Handler()
 	recorder := httptest.NewRecorder()
 
 	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/healthz", nil))

@@ -66,6 +66,36 @@ func (client *Client) SendMessage(ctx context.Context, chatID int64, text string
 	return client.call(ctx, "sendMessage", requestTimeout, map[string]any{"chat_id": chatID, "text": text}, nil)
 }
 
+func (client *Client) SendHTML(ctx context.Context, chatID int64, html string) error {
+	return client.call(ctx, "sendMessage", requestTimeout, map[string]any{
+		"chat_id": chatID, "text": html, "parse_mode": "HTML", "link_preview_options": map[string]any{"is_disabled": true},
+	}, nil)
+}
+
+// Принимает: ctx; profile — описание и меню команд.
+// Делает: обновляет карточку бота: setMyDescription, setMyShortDescription и setMyCommands.
+// Возвращает: nil либо первую ошибку Bot API.
+func (client *Client) SetProfile(ctx context.Context, profile Profile) error {
+	commands := make([]map[string]string, 0, len(profile.Commands))
+	for _, command := range profile.Commands {
+		commands = append(commands, map[string]string{"command": command.Name, "description": command.Description})
+	}
+	steps := []struct {
+		method  string
+		payload map[string]any
+	}{
+		{"setMyDescription", map[string]any{"description": profile.Description}},
+		{"setMyShortDescription", map[string]any{"short_description": profile.ShortDescription}},
+		{"setMyCommands", map[string]any{"commands": commands}},
+	}
+	for _, step := range steps {
+		if err := client.call(ctx, step.method, requestTimeout, step.payload, nil); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (client *Client) SendTyping(ctx context.Context, chatID int64) error {
 	return client.call(ctx, "sendChatAction", requestTimeout, map[string]any{"chat_id": chatID, "action": "typing"}, nil)
 }

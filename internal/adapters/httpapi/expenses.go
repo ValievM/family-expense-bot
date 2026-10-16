@@ -1,8 +1,10 @@
 package httpapi
 
 import (
+	"cmp"
 	"context"
 	"net/http"
+	"slices"
 	"strconv"
 
 	"github.com/ValievM/family-expense-bot/internal/domain"
@@ -39,18 +41,31 @@ func (server *Server) handleListCategories(w http.ResponseWriter, _ *http.Reques
 }
 
 // Принимает: w, r — ответ и запрос.
-// Делает: отдаёт список идентификаторов пользователей из сервиса.
-// Возвращает: ничего; ошибку сервиса пишет через writeError.
+// Делает: объединяет владельцев расходов и известных участников без дублей; имя и ник берёт из справочника, пустые — "".
+// Возвращает: ничего; ошибку любого источника пишет через writeError.
 func (server *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	userIDs, err := server.expenses.ListUserIDs(r.Context())
 	if err != nil {
 		server.writeError(w, r, err)
 		return
 	}
-	items := make([]userResponse, 0, len(userIDs))
-	for _, userID := range userIDs {
-		items = append(items, userResponse{UserID: userID.Int64()})
+	members, err := server.members.List(r.Context())
+	if err != nil {
+		server.writeError(w, r, err)
+		return
 	}
+	byID := make(map[int64]userResponse, len(userIDs)+len(members))
+	for _, userID := range userIDs {
+		byID[userID.Int64()] = userResponse{UserID: userID.Int64()}
+	}
+	for _, member := range members {
+		byID[member.ID().Int64()] = userResponse{UserID: member.ID().Int64(), Name: member.Name(), Username: member.Username()}
+	}
+	items := make([]userResponse, 0, len(byID))
+	for _, item := range byID {
+		items = append(items, item)
+	}
+	slices.SortFunc(items, func(a, b userResponse) int { return cmp.Compare(a.UserID, b.UserID) })
 	writeJSON(w, http.StatusOK, listResponse[userResponse]{Items: items})
 }
 

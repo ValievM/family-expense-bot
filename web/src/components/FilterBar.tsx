@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import type { Category, Member } from '../api/types';
 import type { Filters } from '../lib/filters';
-import { memberOptionLabel, type NameMap } from '../lib/members';
+import { memberView, shortId, type MemberDirectory } from '../lib/members';
 import { detectPreset, PERIOD_OPTIONS, presetRange, type PeriodPreset } from '../lib/periods';
 import { Icon } from './Icon';
 
@@ -9,7 +9,7 @@ interface FilterBarProps {
   filters: Filters;
   members: Member[];
   categories: Category[];
-  names: NameMap;
+  directory: MemberDirectory;
   today: string;
   activeCount: number;
   periodError: string | null;
@@ -18,7 +18,7 @@ interface FilterBarProps {
 }
 
 export function FilterBar(props: FilterBarProps) {
-  const { filters, members, categories, names, today, activeCount, periodError, onChange, onReset } = props;
+  const { filters, members, categories, directory, today, activeCount, periodError, onChange, onReset } = props;
   const [open, setOpen] = useState(false);
   // «Свой период» не меняет даты, поэтому помним, для каких границ его выбрали.
   const [customFor, setCustomFor] = useState<string | null>(null);
@@ -67,11 +67,14 @@ export function FilterBar(props: FilterBarProps) {
           <label htmlFor="filter-user">Член семьи</label>
           <select id="filter-user" value={filters.user_id} onChange={(e) => onChange({ user_id: e.target.value })}>
             <option value="">Все члены семьи</option>
-            {members.map((m) => (
-              <option key={m.user_id} value={String(m.user_id)}>
-                {memberOptionLabel(m.user_id, names)}
-              </option>
-            ))}
+            {members.map((m) => {
+              const view = memberView(directory, m.user_id);
+              return (
+                <option key={m.user_id} value={String(m.user_id)} title={view.details}>
+                  {view.name ? view.label : `ID ${shortId(m.user_id)}`}
+                </option>
+              );
+            })}
             {unknownMember && <option value={filters.user_id}>ID {filters.user_id}</option>}
           </select>
         </div>
