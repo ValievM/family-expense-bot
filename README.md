@@ -58,6 +58,19 @@ docker compose up -d --build --wait && scripts/smoke.sh
 | `WEB_PORT` | `8080` | порт панели на хосте |
 | `POSTGRES_PASSWORD` | `expenses` | пароль БД внутри compose (наружу порт БД не открыт) |
 
+**Готовый пример `.env`** (GLM через ключ API; значения в `<...>` ваши):
+
+```env
+TELEGRAM_BOT_TOKEN=<токен от @BotFather>
+LLM_AUTH=apikey
+LLM_BASE_URL=https://api.z.ai/api/paas/v4
+LLM_API_KEY=<ключ>
+LLM_MODEL=glm-5.3-flash
+TZ=Europe/Moscow
+```
+
+Остальные переменные необязательны: `DATABASE_URL`, `HTTP_ADDR` и пароль базы compose задаёт сам. Файл `.env.example` содержит эти же строки с пустыми значениями. Значения по умолчанию в таблице выше действуют, если переменная не задана (по умолчанию модель OpenAI), а `.env.example` для удобства уже настроен на GLM.
+
 **Другая модель или провайдер без правок кода.** Например, GLM (Z.ai):
 
 ```env
@@ -207,7 +220,7 @@ CI (GitHub Actions) прогоняет Go-линтеры и тесты, инте
 
 | Режим | Как включить | Протокол |
 |---|---|---|
-| **Ключ API** (по умолчанию) | `LLM_AUTH=apikey`, `LLM_API_KEY=...` | Chat Completions, любой совместимый сервер (OpenAI, OpenRouter, Ollama) |
+| **Ключ API** (по умолчанию) | `LLM_AUTH=apikey`, `LLM_API_KEY=...` | Chat Completions, любой совместимый сервер (GLM/Z.ai, OpenAI, OpenRouter, Ollama); на GLM проверено вживую |
 | **Вход через ChatGPT** | `make chatgpt-login`, затем `LLM_AUTH=oauth` | Responses API, запросы оплачиваются подпиской ChatGPT |
 
 Режим подписки сделан по [документации OpenAI «Sign in with ChatGPT» для открытых проектов](https://developers.openai.com/siwc/token-sharing-open-source/sign-in): OAuth с PKCE через локальный адрес `127.0.0.1:1455`, право `chatgpt.tokens.use.direct`, вызовы `POST /v1/responses` с `store=false` и `stream=true`.
