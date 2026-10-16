@@ -248,7 +248,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
                         data-field="userId"
                         inputMode="numeric"
                         autoComplete="off"
-                        placeholder="6612214276"
+                        placeholder="1234567890"
                         value={form.userId}
                         aria-invalid={invalid('userId')}
                         aria-describedby="user-help user-error"

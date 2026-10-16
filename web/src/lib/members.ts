@@ -10,7 +10,7 @@ export const MAX_NAME_LENGTH = 40;
 /**
  * Принимает: Telegram ID.
  * Делает: оставляет последние четыре цифры, чтобы длинные ID не занимали строку.
- * Возвращает: «…4276»; короткий ID целиком.
+ * Возвращает: «…7890»; короткий ID целиком.
  */
 export function shortId(id: number): string {
   const s = String(id);
@@ -55,7 +55,7 @@ export interface MemberView {
   label: string;
   /** Имя без уточнения ID; пустое, если известен только ID. Из него строится монограмма. */
   name: string;
-  /** Вторичный текст: «Telegram ID 6612214276 · @valiev». */
+  /** Вторичный текст: «Telegram ID 1234567890 · @valiev». */
   details: string;
 }
 
@@ -79,7 +79,7 @@ export type LabelSource = 'local' | 'telegram' | 'username' | 'id';
 
 /**
  * Принимает: Telegram ID, локальное имя и данные с сервера (оба могут отсутствовать).
- * Делает: выбирает подпись по приоритету: имя на этом устройстве → имя из Telegram → @username → «…4276».
+ * Делает: выбирает подпись по приоритету: имя на этом устройстве → имя из Telegram → @username → «…7890».
  * Возвращает: подпись и её источник.
  */
 export function pickLabel(
@@ -97,7 +97,7 @@ export function pickLabel(
 /**
  * Принимает: Telegram ID и данные с сервера.
  * Делает: собирает полный ID и @username, чтобы различать людей с похожими именами.
- * Возвращает: «Telegram ID 6612214276 · @valiev».
+ * Возвращает: «Telegram ID 1234567890 · @valiev».
  */
 export function memberDetails(id: number, member?: Pick<Member, 'username'>): string {
   return member?.username ? `Telegram ID ${id} · @${member.username}` : `Telegram ID ${id}`;

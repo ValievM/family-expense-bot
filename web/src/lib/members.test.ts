@@ -37,14 +37,14 @@ const throwing: StorageLike = {
 
 describe('member display', () => {
   it('shortens long IDs to the last four digits', () => {
-    expect(shortId(6612214276)).toBe('…4276');
+    expect(shortId(1234567890)).toBe('…7890');
     expect(shortId(42)).toBe('42');
   });
 
   it('gives the same hue for the same ID and stays in range', () => {
-    expect(memberHue(6612214276)).toBe(memberHue(6612214276));
-    expect(memberHue(6612214276)).not.toBe(memberHue(5241803182));
-    for (const id of [1, 42, 6612214276, 9007199254740991]) {
+    expect(memberHue(1234567890)).toBe(memberHue(1234567890));
+    expect(memberHue(1234567890)).not.toBe(memberHue(5241803182));
+    for (const id of [1, 42, 1234567890, 9007199254740991]) {
       const h = memberHue(id);
       expect(h).toBeGreaterThanOrEqual(0);
       expect(h).toBeLessThan(360);
@@ -52,14 +52,14 @@ describe('member display', () => {
   });
 
   it.each([
-    [6612214276, undefined, '76'],
-    [6612214276, '', '76'],
-    [6612214276, 'мама', 'М'],
-    [6612214276, ' Анна  Петрова ', 'АП'],
-    [6612214276, 'Анна Мария Петрова', 'АМ'],
-    [6612214276, '@valiev', 'V'],
-    [6612214276, '@ivan_petrov', 'IP'],
-    [6612214276, '🐱 2', '76'],
+    [1234567890, undefined, '90'],
+    [1234567890, '', '90'],
+    [1234567890, 'мама', 'М'],
+    [1234567890, ' Анна  Петрова ', 'АП'],
+    [1234567890, 'Анна Мария Петрова', 'АМ'],
+    [1234567890, '@valiev', 'V'],
+    [1234567890, '@ivan_petrov', 'IP'],
+    [1234567890, '🐱 2', '90'],
   ])('monogram(%i, %s) = %s', (id, name, want) => {
     expect(monogram(id, name)).toBe(want);
   });
@@ -73,10 +73,10 @@ describe('pickLabel', () => {
     ['server name when no local name', undefined, member(1, 'Анна', 'anna'), 'Анна', 'telegram'],
     ['blank local name is ignored', '  ', member(1, 'Анна', 'anna'), 'Анна', 'telegram'],
     ['username when no name', undefined, member(1, '', 'anna'), '@anna', 'username'],
-    ['short ID when nothing is known', undefined, member(6612214276), '…4276', 'id'],
-    ['short ID when the member is missing', undefined, undefined, '…4276', 'id'],
+    ['short ID when nothing is known', undefined, member(1234567890), '…7890', 'id'],
+    ['short ID when the member is missing', undefined, undefined, '…7890', 'id'],
   ] as const)('%s', (_, local, m, label, source) => {
-    expect(pickLabel(m?.user_id ?? 6612214276, local, m)).toEqual({ label, source });
+    expect(pickLabel(m?.user_id ?? 1234567890, local, m)).toEqual({ label, source });
   });
 });
 
@@ -99,11 +99,11 @@ describe('normalizeMember', () => {
 
 describe('buildDirectory', () => {
   it('labels members by priority and keeps the ID as details', () => {
-    const dir = buildDirectory([], [member(6612214276, 'Магомед', 'valiev'), member(5241803182)], {});
-    expect(memberView(dir, 6612214276)).toEqual({
+    const dir = buildDirectory([], [member(1234567890, 'Магомед', 'valiev'), member(5241803182)], {});
+    expect(memberView(dir, 1234567890)).toEqual({
       label: 'Магомед',
       name: 'Магомед',
-      details: 'Telegram ID 6612214276 · @valiev',
+      details: 'Telegram ID 1234567890 · @valiev',
     });
     expect(memberView(dir, 5241803182)).toEqual({ label: '…3182', name: '', details: 'Telegram ID 5241803182' });
   });
@@ -115,15 +115,15 @@ describe('buildDirectory', () => {
   });
 
   it('appends the short ID when labels collide, case-insensitively', () => {
-    const dir = buildDirectory([], [member(6612214276, 'Анна'), member(5241803182, 'анна'), member(1, 'Олег')], {});
-    expect(memberView(dir, 6612214276).label).toBe('Анна · …4276');
+    const dir = buildDirectory([], [member(1234567890, 'Анна'), member(5241803182, 'анна'), member(1, 'Олег')], {});
+    expect(memberView(dir, 1234567890).label).toBe('Анна · …7890');
     expect(memberView(dir, 5241803182).label).toBe('анна · …3182');
     expect(memberView(dir, 1).label).toBe('Олег');
   });
 
   it('detects a collision between a local name and a server name', () => {
-    const dir = buildDirectory([], [member(6612214276, 'Анна'), member(5241803182, 'Мама')], { '5241803182': 'Анна' });
-    expect(memberView(dir, 6612214276).label).toBe('Анна · …4276');
+    const dir = buildDirectory([], [member(1234567890, 'Анна'), member(5241803182, 'Мама')], { '5241803182': 'Анна' });
+    expect(memberView(dir, 1234567890).label).toBe('Анна · …7890');
     expect(memberView(dir, 5241803182).label).toBe('Анна · …3182');
   });
 
@@ -136,9 +136,9 @@ describe('buildDirectory', () => {
   });
 
   it('keeps the plain name for the avatar even when the label is disambiguated', () => {
-    const dir = buildDirectory([], [member(6612214276, 'Анна Петрова'), member(5241803182, 'Анна Петрова')], {});
-    const view = memberView(dir, 6612214276);
-    expect(monogram(6612214276, view.name)).toBe('АП');
+    const dir = buildDirectory([], [member(1234567890, 'Анна Петрова'), member(5241803182, 'Анна Петрова')], {});
+    const view = memberView(dir, 1234567890);
+    expect(monogram(1234567890, view.name)).toBe('АП');
   });
 
   it('builds details without username', () => {
@@ -150,9 +150,9 @@ describe('buildDirectory', () => {
 describe('local names storage', () => {
   it('round-trips names', () => {
     const s = new MemoryStorage();
-    const names = withName({}, 6612214276, '  Мама ');
+    const names = withName({}, 1234567890, '  Мама ');
     expect(saveNames(s, names)).toBe(true);
-    expect(loadNames(s)).toEqual({ '6612214276': 'Мама' });
+    expect(loadNames(s)).toEqual({ '1234567890': 'Мама' });
   });
 
   it('removes a name when it is cleared and trims long names', () => {

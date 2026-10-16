@@ -142,8 +142,8 @@ func TestNewUserID(t *testing.T) {
 			t.Errorf("NewUserID(%d) error = %v, want ErrInvalidUser", bad, err)
 		}
 	}
-	id, err := domain.NewUserID(6612214276)
-	if err != nil || id.Int64() != 6612214276 || id.IsZero() {
+	id, err := domain.NewUserID(1234567890)
+	if err != nil || id.Int64() != 1234567890 || id.IsZero() {
 		t.Errorf("NewUserID() = %v, %v", id, err)
 	}
 	if !(domain.UserID{}).IsZero() {
