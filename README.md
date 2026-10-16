@@ -10,14 +10,29 @@
 
 ## Быстрый старт
 
-Нужны Docker с Compose.
+Нужны Git и Docker с Compose.
 
 ```bash
-cp .env.example .env        # впишите TELEGRAM_BOT_TOKEN и LLM_API_KEY
+git clone https://github.com/ValievM/family-expense-bot.git
+cd family-expense-bot
+```
+
+Настройки лежат в файле `.env`:
+
+- **Если автор прислал готовый `.env`**, просто положите его в эту папку (рядом с `docker-compose.yml`).
+- **Иначе** создайте его из шаблона и впишите свои значения (токен бота от [@BotFather](https://t.me/BotFather) и ключ модели; подробности в таблице ниже):
+
+```bash
+cp .env.example .env
+```
+
+Запуск:
+
+```bash
 docker compose up --build
 ```
 
-Панель откроется на http://localhost:8080 (порт меняется переменной `WEB_PORT`).
+Панель откроется на http://localhost:8080 (порт меняется переменной `WEB_PORT`), бот начнёт отвечать в Telegram. Остановить: `Ctrl+C`, а удалить контейнеры вместе с базой: `docker compose down -v`.
 
 Без `TELEGRAM_BOT_TOKEN` поднимутся база, REST API и панель, а бот будет отключён (это видно в логе). Так можно проверить панель без ключей.
 
@@ -43,7 +58,15 @@ docker compose up -d --build --wait && scripts/smoke.sh
 | `WEB_PORT` | `8080` | порт панели на хосте |
 | `POSTGRES_PASSWORD` | `expenses` | пароль БД внутри compose (наружу порт БД не открыт) |
 
-**Другая модель или провайдер без правок кода.** Например, локальная Ollama:
+**Другая модель или провайдер без правок кода.** Например, GLM (Z.ai):
+
+```env
+LLM_BASE_URL=https://api.z.ai/api/paas/v4
+LLM_API_KEY=ключ
+LLM_MODEL=glm-5.3-flash
+```
+
+(для ключей тарифа Coding Plan адрес `https://api.z.ai/api/coding/paas/v4`), или локальная Ollama:
 
 ```env
 LLM_BASE_URL=http://host.docker.internal:11434/v1
