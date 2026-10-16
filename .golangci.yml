@@ -17,7 +17,7 @@ linters:
     paths:
       - web
     rules:
-      # Comments follow the project policy (see AGENTS.md): own format for functions, none for interfaces.
+      # Comments follow the project policy (see CONTRIBUTING.md): own format for functions, none for interfaces.
       - linters: [revive]
         text: "comment on exported|should have comment"
 formatters:

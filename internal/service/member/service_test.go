@@ -35,14 +35,14 @@ func TestRememberStoresAndUpdatesMember(t *testing.T) {
 	repository := &memoryRepository{members: map[int64]domain.Member{}}
 	service := member.NewService(repository)
 
-	if err := service.Remember(context.Background(), 7, "Магомед", "valiev"); err != nil {
+	if err := service.Remember(context.Background(), 7, "Алексей", "alexey"); err != nil {
 		t.Fatalf("Remember() error = %v", err)
 	}
-	if err := service.Remember(context.Background(), 7, "Магомед В.", "valiev"); err != nil {
+	if err := service.Remember(context.Background(), 7, "Алексей В.", "alexey"); err != nil {
 		t.Fatalf("Remember() error = %v", err)
 	}
 
-	if got := repository.members[7].Name(); got != "Магомед В." || len(repository.members) != 1 {
+	if got := repository.members[7].Name(); got != "Алексей В." || len(repository.members) != 1 {
 		t.Errorf("name = %q, members = %d", got, len(repository.members))
 	}
 }

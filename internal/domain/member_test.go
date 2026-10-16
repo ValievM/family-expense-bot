@@ -11,11 +11,11 @@ import (
 
 // Проверяет: NewMember чистит ввод (пробелы, «@»), обрезает слишком длинное и не принимает нулевой ID.
 func TestNewMember(t *testing.T) {
-	member, err := domain.NewMember(domaintest.UserID(t, 7), "  Магомед В.  ", " @valiev ")
+	member, err := domain.NewMember(domaintest.UserID(t, 7), "  Алексей В.  ", " @alexey ")
 	if err != nil {
 		t.Fatalf("NewMember() error = %v", err)
 	}
-	if member.ID().Int64() != 7 || member.Name() != "Магомед В." || member.Username() != "valiev" {
+	if member.ID().Int64() != 7 || member.Name() != "Алексей В." || member.Username() != "alexey" {
 		t.Errorf("member = %q / %q", member.Name(), member.Username())
 	}
 

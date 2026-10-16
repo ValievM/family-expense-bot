@@ -57,7 +57,7 @@ describe('member display', () => {
     [1234567890, 'мама', 'М'],
     [1234567890, ' Анна  Петрова ', 'АП'],
     [1234567890, 'Анна Мария Петрова', 'АМ'],
-    [1234567890, '@valiev', 'V'],
+    [1234567890, '@alexey', 'V'],
     [1234567890, '@ivan_petrov', 'IP'],
     [1234567890, '🐱 2', '90'],
   ])('monogram(%i, %s) = %s', (id, name, want) => {
@@ -87,8 +87,8 @@ describe('normalizeMember', () => {
   });
 
   it('trims and strips a leading @ from username', () => {
-    expect(normalizeMember({ user_id: 42, name: ' Магомед ', username: '@valiev' })).toEqual(
-      member(42, 'Магомед', 'valiev'),
+    expect(normalizeMember({ user_id: 42, name: ' Алексей ', username: '@alexey' })).toEqual(
+      member(42, 'Алексей', 'alexey'),
     );
   });
 
@@ -99,11 +99,11 @@ describe('normalizeMember', () => {
 
 describe('buildDirectory', () => {
   it('labels members by priority and keeps the ID as details', () => {
-    const dir = buildDirectory([], [member(1234567890, 'Магомед', 'valiev'), member(5241803182)], {});
+    const dir = buildDirectory([], [member(1234567890, 'Алексей', 'alexey'), member(5241803182)], {});
     expect(memberView(dir, 1234567890)).toEqual({
-      label: 'Магомед',
-      name: 'Магомед',
-      details: 'Telegram ID 1234567890 · @valiev',
+      label: 'Алексей',
+      name: 'Алексей',
+      details: 'Telegram ID 1234567890 · @alexey',
     });
     expect(memberView(dir, 5241803182)).toEqual({ label: '…3182', name: '', details: 'Telegram ID 5241803182' });
   });

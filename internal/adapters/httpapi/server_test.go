@@ -222,8 +222,8 @@ func TestListUsers(t *testing.T) {
 		want    string
 	}{
 		{"owners only", owners, nil, `{"items":[{"user_id":2,"name":"","username":""},{"user_id":5,"name":"","username":""}]}`},
-		{"members only", nil, []domain.Member{makeMember(t, 9, "Анна", "anna"), makeMember(t, 3, "Магомед", "valiev")},
-			`{"items":[{"user_id":3,"name":"Магомед","username":"valiev"},{"user_id":9,"name":"Анна","username":"anna"}]}`},
+		{"members only", nil, []domain.Member{makeMember(t, 9, "Анна", "anna"), makeMember(t, 3, "Алексей", "alexey")},
+			`{"items":[{"user_id":3,"name":"Алексей","username":"alexey"},{"user_id":9,"name":"Анна","username":"anna"}]}`},
 		{"overlap deduplicated and sorted", owners, []domain.Member{makeMember(t, 5, "Анна", ""), makeMember(t, 1, "Лев", "lev")},
 			`{"items":[{"user_id":1,"name":"Лев","username":"lev"},{"user_id":2,"name":"","username":""},{"user_id":5,"name":"Анна","username":""}]}`},
 		{"nobody", nil, nil, `{"items":[]}`},

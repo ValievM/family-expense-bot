@@ -55,7 +55,7 @@ export interface MemberView {
   label: string;
   /** Имя без уточнения ID; пустое, если известен только ID. Из него строится монограмма. */
   name: string;
-  /** Вторичный текст: «Telegram ID 1234567890 · @valiev». */
+  /** Вторичный текст: «Telegram ID 1234567890 · @alexey». */
   details: string;
 }
 
@@ -97,7 +97,7 @@ export function pickLabel(
 /**
  * Принимает: Telegram ID и данные с сервера.
  * Делает: собирает полный ID и @username, чтобы различать людей с похожими именами.
- * Возвращает: «Telegram ID 1234567890 · @valiev».
+ * Возвращает: «Telegram ID 1234567890 · @alexey».
  */
 export function memberDetails(id: number, member?: Pick<Member, 'username'>): string {
   return member?.username ? `Telegram ID ${id} · @${member.username}` : `Telegram ID ${id}`;

@@ -16,7 +16,7 @@ import (
 // Проверяет: Upsert вставляет нового участника, List возвращает его данные.
 func TestMemberRepositoryUpsertInserts(t *testing.T) {
 	repository, ctx := newMemberRepository(t)
-	member := newMember(t, domaintest.UserID(t, 101), "Магомед", "valiev")
+	member := newMember(t, domaintest.UserID(t, 101), "Алексей", "alexey")
 
 	if err := repository.Upsert(ctx, member); err != nil {
 		t.Fatalf("upsert: %v", err)
