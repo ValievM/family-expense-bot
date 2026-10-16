@@ -1,4 +1,4 @@
-// Package expense_test — проверяет сценарии работы с расходами через контракт потребителя.
+// Package expense_test проверяет сценарии над расходами через публичный контракт сервиса с хранилищем в памяти.
 package expense_test
 
 import (
@@ -12,359 +12,428 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/service/expense"
 )
 
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что Create ставит CreatedAt и UpdatedAt из clock в UTC.
-// Возвращает: ничего.
-func TestCreateStampsTimestampsFromClock(t *testing.T) {
-	now := time.Date(2026, time.January, 2, 15, 4, 5, 6, time.FixedZone("UTC+03", 3*60*60))
-	repository := newFakeRepository()
-	service := expense.NewService(repository, &fakeClock{now: now}, time.UTC)
-
-	created, err := service.Create(context.Background(), validExpense(7, 0, 100))
-	if err != nil {
-		t.Fatalf("Create() error = %v, want nil", err)
-	}
-	if !created.CreatedAt.Equal(now.UTC()) || !created.UpdatedAt.Equal(now.UTC()) {
-		t.Errorf("created timestamps = (%v, %v), want both %v", created.CreatedAt, created.UpdatedAt, now.UTC())
-	}
-}
-
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что Update сливает patch с сохранённым расходом, сохраняет CreatedAt и обновляет UpdatedAt.
-// Возвращает: ничего.
-func TestUpdateMergesPatchAndStampsUpdateTime(t *testing.T) {
-	createdAt := time.Date(2025, time.March, 1, 8, 0, 0, 0, time.UTC)
-	stored := validExpense(7, 42, 100)
-	stored.CreatedAt = createdAt
-	stored.UpdatedAt = createdAt
-	repository := newFakeRepository(stored)
-	now := time.Date(2026, time.January, 2, 15, 4, 5, 6, time.UTC)
-	service := expense.NewService(repository, &fakeClock{now: now}, time.UTC)
-	amount := int64(250)
-	comment := "new comment"
-
-	updated, err := service.Update(context.Background(), stored.ID, expense.Patch{
-		Amount:  &amount,
-		Comment: &comment,
-	})
-	if err != nil {
-		t.Fatalf("Update() error = %v, want nil", err)
-	}
-	if updated.Amount != amount || updated.Comment != comment || updated.Category != stored.Category {
-		t.Errorf("Update() merged fields incorrectly: %+v", updated)
-	}
-	if !updated.CreatedAt.Equal(createdAt) || !updated.UpdatedAt.Equal(now) {
-		t.Errorf("Update() timestamps = (%v, %v), want (%v, %v)", updated.CreatedAt, updated.UpdatedAt, createdAt, now)
-	}
-}
-
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что Update с невалидным итогом возвращает ErrInvalidAmount и не меняет сохранённую запись.
-// Возвращает: ничего.
-func TestUpdateRejectsInvalidMergedExpenseWithoutPersistence(t *testing.T) {
-	stored := validExpense(7, 42, 100)
-	repository := newFakeRepository(stored)
-	service := expense.NewService(repository, &fakeClock{now: time.Now()}, time.UTC)
-	invalidAmount := int64(0)
-
-	if _, err := service.Update(context.Background(), stored.ID, expense.Patch{Amount: &invalidAmount}); !errors.Is(err, domain.ErrInvalidAmount) {
-		t.Fatalf("Update() error = %v, want ErrInvalidAmount", err)
-	}
-	if got := repository.records[stored.ID].Amount; got != stored.Amount {
-		t.Errorf("invalid patch changed amount to %d, want %d", got, stored.Amount)
-	}
-}
-
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что UserExpenses не читает, не меняет и не удаляет чужие расходы (ErrNotFound).
-// Возвращает: ничего.
-func TestUserExpensesCannotReadOrChangeForeignExpenses(t *testing.T) {
-	stored := validExpense(8, 42, 100)
-	repository := newFakeRepository(stored)
-	service := expense.NewService(repository, &fakeClock{now: time.Now()}, time.UTC)
-	userExpenses := service.ForUser(7)
-	amount := int64(250)
-
-	if _, err := userExpenses.Get(context.Background(), stored.ID); !errors.Is(err, expense.ErrNotFound) {
-		t.Errorf("Get() error = %v, want ErrNotFound", err)
-	}
-	if _, err := userExpenses.Update(context.Background(), stored.ID, expense.Patch{Amount: &amount}); !errors.Is(err, expense.ErrNotFound) {
-		t.Errorf("Update() error = %v, want ErrNotFound", err)
-	}
-	if err := userExpenses.Delete(context.Background(), stored.ID); !errors.Is(err, expense.ErrNotFound) {
-		t.Errorf("Delete() error = %v, want ErrNotFound", err)
-	}
-	if got := repository.records[stored.ID].Amount; got != stored.Amount {
-		t.Errorf("foreign expense amount changed to %d, want %d", got, stored.Amount)
-	}
-	if _, exists := repository.records[stored.ID]; !exists {
-		t.Fatal("foreign expense was deleted")
-	}
-}
-
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что Create и List в UserExpenses привязаны к владельцу области и игнорируют чужой UserID.
-// Возвращает: ничего.
-func TestUserExpensesCreateAndListBindOwner(t *testing.T) {
-	repository := newFakeRepository(validExpense(8, 1, 200))
-	service := expense.NewService(repository, &fakeClock{now: time.Now()}, time.UTC)
-	userExpenses := service.ForUser(7)
-	created, err := userExpenses.Create(context.Background(), validExpense(999, 0, 100))
-	if err != nil {
-		t.Fatalf("Create() error = %v, want nil", err)
-	}
-	if created.UserID != 7 {
-		t.Errorf("Create() UserID = %d, want scoped owner 7", created.UserID)
-	}
-
-	requestedOwner := int64(8)
-	listed, err := userExpenses.List(context.Background(), expense.ListFilter{UserID: &requestedOwner})
-	if err != nil {
-		t.Fatalf("List() error = %v, want nil", err)
-	}
-	if len(listed) != 1 || listed[0].UserID != 7 {
-		t.Errorf("List() = %+v, want only expenses owned by user 7", listed)
-	}
-}
-
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что Update в UserExpenses сохраняет владельца и время создания.
-// Возвращает: ничего.
-func TestUserExpensesUpdatePreservesOwnerAndCreationTime(t *testing.T) {
-	createdAt := time.Date(2025, time.March, 1, 8, 0, 0, 0, time.UTC)
-	stored := validExpense(7, 42, 100)
-	stored.CreatedAt = createdAt
-	repository := newFakeRepository(stored)
-	now := time.Date(2026, time.January, 2, 15, 0, 0, 0, time.UTC)
-	userExpenses := expense.NewService(repository, &fakeClock{now: now}, time.UTC).ForUser(7)
-	amount := int64(250)
-
-	updated, err := userExpenses.Update(context.Background(), stored.ID, expense.Patch{Amount: &amount})
-	if err != nil {
-		t.Fatalf("Update() error = %v, want nil", err)
-	}
-	if updated.UserID != 7 || !updated.CreatedAt.Equal(createdAt) || updated.Amount != amount {
-		t.Errorf("Update() = %+v, want owner 7, original creation time, and amount %d", updated, amount)
-	}
-}
-
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что List сначала приводит границы к датам, поэтому период в пределах одного дня допустим.
-// Возвращает: ничего.
-func TestListNormalizesDatesBeforeCheckingPeriod(t *testing.T) {
-	location := time.FixedZone("UTC+03", 3*60*60)
-	spentAt := time.Date(2026, time.January, 3, 12, 0, 0, 0, location)
-	stored := validExpense(7, 1, 100)
-	stored.SpentAt = spentAt
-	repository := newFakeRepository(stored)
-	service := expense.NewService(repository, &fakeClock{now: time.Now()}, location)
-	from := time.Date(2026, time.January, 3, 23, 0, 0, 0, location)
-	to := time.Date(2026, time.January, 3, 1, 0, 0, 0, location)
-
-	listed, err := service.List(context.Background(), expense.ListFilter{From: &from, To: &to})
-	if err != nil {
-		t.Fatalf("List() error = %v, want same-day period to be valid", err)
-	}
-	if len(listed) != 1 {
-		t.Fatalf("List() returned %d expenses, want 1", len(listed))
-	}
-	if repository.lastFilter.From == nil || repository.lastFilter.To == nil || !repository.lastFilter.From.Equal(*repository.lastFilter.To) {
-		t.Errorf("repository received unnormalized bounds: %+v", repository.lastFilter)
-	}
-}
-
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что List возвращает ErrInvalidPeriod для обратного периода и не обращается к репозиторию.
-// Возвращает: ничего.
-func TestListRejectsReversedCalendarPeriod(t *testing.T) {
-	location := time.FixedZone("UTC+03", 3*60*60)
-	repository := newFakeRepository()
-	service := expense.NewService(repository, &fakeClock{now: time.Now()}, location)
-	from := time.Date(2026, time.January, 4, 0, 0, 0, 0, location)
-	to := time.Date(2026, time.January, 3, 23, 0, 0, 0, location)
-
-	if _, err := service.List(context.Background(), expense.ListFilter{From: &from, To: &to}); !errors.Is(err, expense.ErrInvalidPeriod) {
-		t.Fatalf("List() error = %v, want ErrInvalidPeriod", err)
-	}
-	if repository.listCalls != 0 {
-		t.Errorf("repository List called %d times for invalid period, want 0", repository.listCalls)
-	}
-}
-
-// Принимает: t — тестовый контекст.
-// Делает: проверяет, что ListUserIDs возвращает уникальных владельцев по возрастанию.
-// Возвращает: ничего.
-func TestListUserIDsReturnsUniqueOwners(t *testing.T) {
-	repository := newFakeRepository(
-		validExpense(9, 1, 100),
-		validExpense(7, 2, 200),
-		validExpense(9, 3, 300),
-	)
-	service := expense.NewService(repository, &fakeClock{now: time.Now()}, time.UTC)
-
-	got, err := service.ListUserIDs(context.Background())
-	if err != nil {
-		t.Fatalf("ListUserIDs() error = %v, want nil", err)
-	}
-	if len(got) != 2 || got[0] != 7 || got[1] != 9 {
-		t.Errorf("ListUserIDs() = %v, want [7 9]", got)
-	}
-}
-
-// fakeClock — тестовые часы с фиксированным временем.
-type fakeClock struct {
-	now time.Time
-}
+// fakeClock — часы с заданным временем.
+type fakeClock struct{ now time.Time }
 
 // Принимает: ничего.
 // Делает: отдаёт зафиксированное время.
-// Возвращает: заданное в now время.
-func (clock *fakeClock) Now() time.Time {
-	return clock.now
-}
+// Возвращает: время из теста.
+func (clock *fakeClock) Now() time.Time { return clock.now }
 
-// fakeRepository — in-memory реализация Repository для тестов.
+// fakeRepository — хранилище расходов в памяти; считает вызовы записи.
 type fakeRepository struct {
-	records    map[int64]domain.Expense
-	nextID     int64
-	listCalls  int
-	lastFilter expense.ListFilter
+	records map[domain.ExpenseID]domain.Expense
+	nextID  domain.ExpenseID
+	writes  int
 }
 
-// Принимает: expenses — начальные записи.
-// Делает: создаёт in-memory репозиторий, присваивая ID записям без него и поддерживая счётчик nextID.
-// Возвращает: указатель на *fakeRepository.
-func newFakeRepository(expenses ...domain.Expense) *fakeRepository {
-	repository := &fakeRepository{records: make(map[int64]domain.Expense)}
-	for _, item := range expenses {
-		if item.ID == 0 {
-			repository.nextID++
-			item.ID = repository.nextID
-		} else if item.ID > repository.nextID {
-			repository.nextID = item.ID
-		}
-		repository.records[item.ID] = item
-	}
-	return repository
+// Принимает: ничего.
+// Делает: создаёт пустое хранилище.
+// Возвращает: указатель на хранилище.
+func newFakeRepository() *fakeRepository {
+	return &fakeRepository{records: make(map[domain.ExpenseID]domain.Expense)}
 }
 
-// Принимает: _ — контекст (не используется); item — новый расход.
-// Делает: присваивает следующий ID и сохраняет запись в памяти.
+// Принимает: _ — контекст не используется; expense — расход без ID.
+// Делает: присваивает следующий ID и сохраняет.
 // Возвращает: сохранённый расход и nil.
 func (repository *fakeRepository) Create(_ context.Context, item domain.Expense) (domain.Expense, error) {
 	repository.nextID++
-	item.ID = repository.nextID
-	repository.records[item.ID] = item
+	repository.writes++
+	item = item.WithID(repository.nextID)
+	repository.records[item.ID()] = item
 	return item, nil
 }
 
-// Принимает: _ — контекст (не используется); id — ID расхода.
-// Делает: ищет запись в памяти.
-// Возвращает: расход или ErrNotFound.
-func (repository *fakeRepository) Get(_ context.Context, id int64) (domain.Expense, error) {
-	item, exists := repository.records[id]
-	if !exists {
+// Принимает: _ — контекст не используется; id — идентификатор.
+// Делает: читает расход.
+// Возвращает: расход либо expense.ErrNotFound.
+func (repository *fakeRepository) Get(_ context.Context, id domain.ExpenseID) (domain.Expense, error) {
+	item, found := repository.records[id]
+	if !found {
 		return domain.Expense{}, expense.ErrNotFound
 	}
 	return item, nil
 }
 
-// Принимает: _ — контекст (не используется); filter — фильтры списка.
-// Делает: считает вызовы, запоминает последний фильтр, фильтрует записи по владельцу, категории и датам и сортирует по SpentAt по убыванию.
-// Возвращает: список расходов и nil.
+// Принимает: _ — контекст не используется; filter — фильтры.
+// Делает: отбирает по владельцу, категории и включительному периоду и сортирует по дню и ID по убыванию.
+// Возвращает: расходы и nil.
 func (repository *fakeRepository) List(_ context.Context, filter expense.ListFilter) ([]domain.Expense, error) {
-	repository.listCalls++
-	repository.lastFilter = filter
 	items := make([]domain.Expense, 0, len(repository.records))
 	for _, item := range repository.records {
-		if filter.UserID != nil && item.UserID != *filter.UserID {
+		if filter.Owner != nil && item.Owner() != *filter.Owner {
 			continue
 		}
-		if filter.Category != nil && item.Category != *filter.Category {
+		if filter.Category != nil && item.Category() != *filter.Category {
 			continue
 		}
-		if filter.From != nil && domain.CompareDates(item.SpentAt, *filter.From, filter.From.Location()) < 0 {
+		if filter.From != nil && item.SpentOn().Compare(*filter.From) < 0 {
 			continue
 		}
-		if filter.To != nil && domain.CompareDates(item.SpentAt, *filter.To, filter.To.Location()) > 0 {
+		if filter.To != nil && item.SpentOn().Compare(*filter.To) > 0 {
 			continue
 		}
 		items = append(items, item)
 	}
 	sort.Slice(items, func(i, j int) bool {
-		return items[i].SpentAt.After(items[j].SpentAt)
+		if cmp := items[i].SpentOn().Compare(items[j].SpentOn()); cmp != 0 {
+			return cmp > 0
+		}
+		return items[i].ID() > items[j].ID()
 	})
 	return items, nil
 }
 
-// Принимает: _ — контекст (не используется).
-// Делает: собирает уникальные UserID из записей и сортирует по возрастанию.
-// Возвращает: список ID и nil.
-func (repository *fakeRepository) ListUserIDs(_ context.Context) ([]int64, error) {
-	seen := make(map[int64]struct{}, len(repository.records))
-	userIDs := make([]int64, 0, len(repository.records))
+// Принимает: _ — контекст не используется.
+// Делает: собирает уникальных владельцев.
+// Возвращает: ID по возрастанию и nil.
+func (repository *fakeRepository) ListUserIDs(_ context.Context) ([]domain.UserID, error) {
+	seen := make(map[domain.UserID]struct{})
+	userIDs := make([]domain.UserID, 0)
 	for _, item := range repository.records {
-		if _, exists := seen[item.UserID]; exists {
-			continue
+		if _, exists := seen[item.Owner()]; !exists {
+			seen[item.Owner()] = struct{}{}
+			userIDs = append(userIDs, item.Owner())
 		}
-		seen[item.UserID] = struct{}{}
-		userIDs = append(userIDs, item.UserID)
 	}
-	sort.Slice(userIDs, func(i, j int) bool { return userIDs[i] < userIDs[j] })
+	sort.Slice(userIDs, func(i, j int) bool { return userIDs[i].Int64() < userIDs[j].Int64() })
 	return userIDs, nil
 }
 
-// Принимает: _ — контекст (не используется); item — расход с новыми значениями.
-// Делает: заменяет существующую запись в памяти.
-// Возвращает: обновлённый расход или ErrNotFound.
+// Принимает: _ — контекст не используется; item — расход с ID.
+// Делает: заменяет сохранённый расход.
+// Возвращает: новый расход либо expense.ErrNotFound.
 func (repository *fakeRepository) Update(_ context.Context, item domain.Expense) (domain.Expense, error) {
-	if _, exists := repository.records[item.ID]; !exists {
+	if _, found := repository.records[item.ID()]; !found {
 		return domain.Expense{}, expense.ErrNotFound
 	}
-	repository.records[item.ID] = item
+	repository.writes++
+	repository.records[item.ID()] = item
 	return item, nil
 }
 
-// Принимает: _ — контекст (не используется); id — ID расхода.
-// Делает: удаляет запись из памяти.
-// Возвращает: nil или ErrNotFound.
-func (repository *fakeRepository) Delete(_ context.Context, id int64) error {
-	if _, exists := repository.records[id]; !exists {
+// Принимает: _ — контекст не используется; id — идентификатор.
+// Делает: удаляет расход.
+// Возвращает: nil либо expense.ErrNotFound.
+func (repository *fakeRepository) Delete(_ context.Context, id domain.ExpenseID) error {
+	if _, found := repository.records[id]; !found {
 		return expense.ErrNotFound
 	}
+	repository.writes++
 	delete(repository.records, id)
 	return nil
 }
 
-// Принимает: userID — владелец; id — ID расхода; amount — сумма в копейках.
-// Делает: собирает валидный расход категории food с датой 2026-01-02.
-// Возвращает: заполненный domain.Expense.
-func validExpense(userID, id, amount int64) domain.Expense {
-	return domain.Expense{
-		ID:       id,
-		UserID:   userID,
-		Amount:   amount,
-		Category: domain.CategoryFood,
-		SpentAt:  time.Date(2026, time.January, 2, 0, 0, 0, 0, time.UTC),
+// Принимает: t — тестовый контекст; value — Telegram ID.
+// Делает: создаёт владельца через конструктор.
+// Возвращает: UserID.
+func user(t *testing.T, value int64) domain.UserID {
+	t.Helper()
+	id, err := domain.NewUserID(value)
+	if err != nil {
+		t.Fatalf("NewUserID(%d) error = %v", value, err)
+	}
+	return id
+}
+
+// Принимает: t — тестовый контекст; kopecks — сумма.
+// Делает: создаёт сумму через конструктор.
+// Возвращает: Money.
+func money(t *testing.T, kopecks int64) domain.Money {
+	t.Helper()
+	value, err := domain.NewMoney(kopecks)
+	if err != nil {
+		t.Fatalf("NewMoney(%d) error = %v", kopecks, err)
+	}
+	return value
+}
+
+// Принимает: t — тестовый контекст; value — день YYYY-MM-DD.
+// Делает: разбирает день через конструктор.
+// Возвращает: указатель на Day.
+func day(t *testing.T, value string) *domain.Day {
+	t.Helper()
+	parsed, err := domain.ParseDay(value)
+	if err != nil {
+		t.Fatalf("ParseDay(%q) error = %v", value, err)
+	}
+	return &parsed
+}
+
+// Принимает: t — тестовый контекст; owner — владелец; kopecks — сумма.
+// Делает: собирает корректный вход создания на 2 января 2026.
+// Возвращает: expense.CreateInput.
+func input(t *testing.T, owner int64, kopecks int64) expense.CreateInput {
+	t.Helper()
+	return expense.CreateInput{Owner: user(t, owner), Amount: money(t, kopecks), Category: domain.CategoryFood, SpentOn: day(t, "2026-01-02")}
+}
+
+// Принимает: t — тестовый контекст; now — время часов.
+// Делает: собирает сервис с хранилищем в памяти и UTC.
+// Возвращает: сервис и хранилище.
+func newService(t *testing.T, now time.Time) (*expense.Service, *fakeRepository) {
+	t.Helper()
+	repository := newFakeRepository()
+	return expense.NewService(repository, &fakeClock{now: now}, time.UTC), repository
+}
+
+var now = time.Date(2026, time.January, 2, 15, 4, 5, 0, time.UTC)
+
+// Принимает: t — тестовый контекст.
+// Делает: проверяет, что время создания и изменения берётся из часов сервиса.
+// Возвращает: ничего.
+func TestCreateStampsTimestampsFromClock(t *testing.T) {
+	service, _ := newService(t, now)
+
+	created, err := service.Create(context.Background(), input(t, 7, 100))
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	if !created.CreatedAt().Equal(now) || !created.UpdatedAt().Equal(now) || created.ID() == 0 {
+		t.Errorf("created = %+v", created)
 	}
 }
 
 // Принимает: t — тестовый контекст.
-// Делает: проверяет, что пустая дата в Create заменяется сегодняшней датой в настроенном часовом поясе.
+// Делает: проверяет, что пропущенный день означает «сегодня» в часовом поясе сервиса, а не в UTC.
 // Возвращает: ничего.
-func TestCreateDefaultsOmittedDateToTodayInConfiguredLocation(t *testing.T) {
+func TestCreateDefaultsOmittedDayToTodayInConfiguredLocation(t *testing.T) {
 	moscow := time.FixedZone("UTC+03", 3*60*60)
-	// 22:30 UTC on 1 Jan is already 2 Jan in Moscow.
-	now := time.Date(2026, time.January, 1, 22, 30, 0, 0, time.UTC)
-	service := expense.NewService(newFakeRepository(), &fakeClock{now: now}, moscow)
-	item := validExpense(7, 0, 100)
-	item.SpentAt = time.Time{}
+	// 22:30 UTC первого января уже второе января в Москве.
+	clock := &fakeClock{now: time.Date(2026, time.January, 1, 22, 30, 0, 0, time.UTC)}
+	service := expense.NewService(newFakeRepository(), clock, moscow)
+	request := input(t, 7, 100)
+	request.SpentOn = nil
 
-	created, err := service.Create(context.Background(), item)
+	created, err := service.Create(context.Background(), request)
 	if err != nil {
-		t.Fatalf("Create() error = %v, want nil", err)
+		t.Fatalf("Create() error = %v", err)
 	}
-	if got, want := domain.FormatDate(created.SpentAt, moscow), "2026-01-02"; got != want {
-		t.Errorf("SpentAt = %s, want %s", got, want)
+
+	if got := created.SpentOn().String(); got != "2026-01-02" {
+		t.Errorf("SpentOn = %s, want 2026-01-02", got)
+	}
+}
+
+// Принимает: t — тестовый контекст.
+// Делает: проверяет, что нарушение инварианта не доходит до хранилища.
+// Возвращает: ничего.
+func TestCreateRejectsInvalidExpenseWithoutPersistence(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*expense.CreateInput)
+		want   error
+	}{
+		{"zero amount", func(in *expense.CreateInput) { in.Amount = domain.Money{} }, domain.ErrInvalidAmount},
+		{"unknown category", func(in *expense.CreateInput) { in.Category = "pets" }, domain.ErrUnknownCategory},
+		{"missing owner", func(in *expense.CreateInput) { in.Owner = domain.UserID{} }, domain.ErrInvalidUser},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service, repository := newService(t, now)
+			request := input(t, 7, 100)
+			tt.mutate(&request)
+
+			if _, err := service.Create(context.Background(), request); !errors.Is(err, tt.want) {
+				t.Errorf("error = %v, want %v", err, tt.want)
+			}
+			if repository.writes != 0 {
+				t.Errorf("writes = %d, want 0", repository.writes)
+			}
+		})
+	}
+}
+
+// Принимает: t — тестовый контекст.
+// Делает: проверяет частичное обновление: меняются заданные поля, время изменения берётся из часов, остальное сохраняется.
+// Возвращает: ничего.
+func TestUpdateMergesChangesAndStampsUpdateTime(t *testing.T) {
+	service, repository := newService(t, now)
+	created, _ := service.Create(context.Background(), input(t, 7, 100))
+	later := now.Add(time.Hour)
+	service = expense.NewService(repository, &fakeClock{now: later}, time.UTC)
+	amount := money(t, 250)
+	comment, _ := domain.NewComment("new comment")
+
+	updated, err := service.Update(context.Background(), created.ID(), domain.Changes{Amount: &amount, Comment: &comment})
+	if err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+
+	if updated.Amount().Kopecks() != 250 || updated.Comment().String() != "new comment" || updated.Category() != domain.CategoryFood {
+		t.Errorf("updated = %+v", updated)
+	}
+	if !updated.CreatedAt().Equal(now) || !updated.UpdatedAt().Equal(later) {
+		t.Errorf("timestamps = (%v, %v), want (%v, %v)", updated.CreatedAt(), updated.UpdatedAt(), now, later)
+	}
+}
+
+// Принимает: t — тестовый контекст.
+// Делает: проверяет, что изменение, нарушающее инвариант, отклоняется доменом и не сохраняется.
+// Возвращает: ничего.
+func TestUpdateRejectsInvalidResultWithoutPersistence(t *testing.T) {
+	service, repository := newService(t, now)
+	created, _ := service.Create(context.Background(), input(t, 7, 100))
+	writes := repository.writes
+	zero := domain.Money{}
+
+	_, err := service.Update(context.Background(), created.ID(), domain.Changes{Amount: &zero})
+
+	if !errors.Is(err, domain.ErrInvalidAmount) {
+		t.Errorf("error = %v, want ErrInvalidAmount", err)
+	}
+	if repository.writes != writes || repository.records[created.ID()].Amount().Kopecks() != 100 {
+		t.Error("an invalid update reached the repository")
+	}
+}
+
+// Принимает: t — тестовый контекст.
+// Делает: проверяет, что область пользователя не читает, не меняет и не удаляет чужие расходы, а ответ неотличим от «не найдено».
+// Возвращает: ничего.
+func TestUserExpensesCannotReadOrChangeForeignExpenses(t *testing.T) {
+	service, repository := newService(t, now)
+	foreign, _ := service.Create(context.Background(), input(t, 8, 900))
+	scope := service.ForUser(user(t, 7))
+	amount := money(t, 1)
+
+	if _, err := scope.Get(context.Background(), foreign.ID()); !errors.Is(err, expense.ErrNotFound) {
+		t.Errorf("Get() error = %v, want ErrNotFound", err)
+	}
+	if _, err := scope.Update(context.Background(), foreign.ID(), domain.Changes{Amount: &amount}); !errors.Is(err, expense.ErrNotFound) {
+		t.Errorf("Update() error = %v, want ErrNotFound", err)
+	}
+	if err := scope.Delete(context.Background(), foreign.ID()); !errors.Is(err, expense.ErrNotFound) {
+		t.Errorf("Delete() error = %v, want ErrNotFound", err)
+	}
+	if got := repository.records[foreign.ID()]; got.Amount().Kopecks() != 900 {
+		t.Errorf("foreign expense changed: %+v", got)
+	}
+}
+
+// Принимает: t — тестовый контекст.
+// Делает: проверяет, что создание и список в области пользователя всегда привязаны к владельцу области, даже если в фильтре указан другой.
+// Возвращает: ничего.
+func TestUserExpensesCreateAndListBindOwner(t *testing.T) {
+	service, _ := newService(t, now)
+	_, _ = service.Create(context.Background(), input(t, 8, 900))
+	scope := service.ForUser(user(t, 7))
+
+	created, err := scope.Create(context.Background(), expense.UserCreateInput{Amount: money(t, 100), Category: domain.CategoryHealth, SpentOn: day(t, "2026-01-02")})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	other := user(t, 8)
+	listed, err := scope.List(context.Background(), expense.ListFilter{Owner: &other})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+
+	if created.Owner() != user(t, 7) {
+		t.Errorf("owner = %v, want 7", created.Owner())
+	}
+	if len(listed) != 1 || listed[0].ID() != created.ID() {
+		t.Errorf("listed = %+v, want only the scoped owner's expense", listed)
+	}
+}
+
+// Принимает: t — тестовый контекст.
+// Делает: проверяет, что обновление в области пользователя сохраняет владельца и время создания.
+// Возвращает: ничего.
+func TestUserExpensesUpdatePreservesOwnerAndCreationTime(t *testing.T) {
+	service, repository := newService(t, now)
+	scope := service.ForUser(user(t, 7))
+	created, _ := scope.Create(context.Background(), expense.UserCreateInput{Amount: money(t, 100), Category: domain.CategoryFood, SpentOn: day(t, "2026-01-02")})
+	service = expense.NewService(repository, &fakeClock{now: now.Add(time.Hour)}, time.UTC)
+	category := domain.CategoryShopping
+
+	updated, err := service.ForUser(user(t, 7)).Update(context.Background(), created.ID(), domain.Changes{Category: &category})
+	if err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+
+	if updated.Owner() != user(t, 7) || !updated.CreatedAt().Equal(now) || updated.Category() != domain.CategoryShopping {
+		t.Errorf("updated = %+v", updated)
+	}
+}
+
+// Принимает: t — тестовый контекст.
+// Делает: проверяет отказ нулевой области (ForUser с нулевым владельцем) на каждой операции.
+// Возвращает: ничего.
+func TestZeroScopeIsRejected(t *testing.T) {
+	service, _ := newService(t, now)
+	scope := service.ForUser(domain.UserID{})
+
+	if _, err := scope.List(context.Background(), expense.ListFilter{}); !errors.Is(err, domain.ErrInvalidUser) {
+		t.Errorf("List() error = %v, want ErrInvalidUser", err)
+	}
+	if _, err := scope.Create(context.Background(), expense.UserCreateInput{Amount: money(t, 1), Category: domain.CategoryFood}); !errors.Is(err, domain.ErrInvalidUser) {
+		t.Errorf("Create() error = %v, want ErrInvalidUser", err)
+	}
+}
+
+// Принимает: t — тестовый контекст.
+// Делает: проверяет фильтры списка: период включает границы, категория отбирает, порядок «новые сверху».
+// Возвращает: ничего.
+func TestListFiltersByInclusivePeriodAndCategory(t *testing.T) {
+	service, _ := newService(t, now)
+	for _, date := range []string{"2026-01-01", "2026-01-02", "2026-01-03", "2026-01-04"} {
+		request := input(t, 7, 100)
+		request.SpentOn = day(t, date)
+		if _, err := service.Create(context.Background(), request); err != nil {
+			t.Fatal(err)
+		}
+	}
+	other := input(t, 7, 100)
+	other.Category = domain.CategoryOther
+	other.SpentOn = day(t, "2026-01-02")
+	_, _ = service.Create(context.Background(), other)
+	food := domain.CategoryFood
+
+	listed, err := service.List(context.Background(), expense.ListFilter{Category: &food, From: day(t, "2026-01-02"), To: day(t, "2026-01-03")})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+
+	if len(listed) != 2 || listed[0].SpentOn().String() != "2026-01-03" || listed[1].SpentOn().String() != "2026-01-02" {
+		t.Errorf("listed = %+v", listed)
+	}
+}
+
+// Принимает: t — тестовый контекст.
+// Делает: проверяет отказ на перевёрнутом периоде и неизвестной категории до обращения к хранилищу.
+// Возвращает: ничего.
+func TestListRejectsInvalidFilters(t *testing.T) {
+	service, _ := newService(t, now)
+	unknown := domain.Category("pets")
+
+	if _, err := service.List(context.Background(), expense.ListFilter{From: day(t, "2026-01-03"), To: day(t, "2026-01-01")}); !errors.Is(err, expense.ErrInvalidPeriod) {
+		t.Errorf("reversed period error = %v, want ErrInvalidPeriod", err)
+	}
+	if _, err := service.List(context.Background(), expense.ListFilter{Category: &unknown}); !errors.Is(err, domain.ErrUnknownCategory) {
+		t.Errorf("unknown category error = %v, want ErrUnknownCategory", err)
+	}
+}
+
+// Принимает: t — тестовый контекст.
+// Делает: проверяет список владельцев: уникальные, по возрастанию.
+// Возвращает: ничего.
+func TestListUserIDsReturnsUniqueOwners(t *testing.T) {
+	service, _ := newService(t, now)
+	for _, owner := range []int64{9, 7, 9, 8} {
+		if _, err := service.Create(context.Background(), input(t, owner, 100)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	userIDs, err := service.ListUserIDs(context.Background())
+	if err != nil {
+		t.Fatalf("ListUserIDs() error = %v", err)
+	}
+
+	if len(userIDs) != 3 || userIDs[0].Int64() != 7 || userIDs[1].Int64() != 8 || userIDs[2].Int64() != 9 {
+		t.Errorf("userIDs = %v, want [7 8 9]", userIDs)
 	}
 }

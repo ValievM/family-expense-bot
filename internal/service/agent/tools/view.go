@@ -1,10 +1,6 @@
 package tools
 
-import (
-	"time"
-
-	"github.com/ValievM/family-expense-bot/internal/domain"
-)
+import "github.com/ValievM/family-expense-bot/internal/domain"
 
 // expenseView — представление траты для модели: сумма уже в рублях строкой, чтобы не считать копейки.
 type expenseView struct {
@@ -16,16 +12,16 @@ type expenseView struct {
 	Comment       string `json:"comment,omitempty"`
 }
 
-// Принимает: item — трата из домена; location — часовой пояс для даты.
+// Принимает: item — трата из домена.
 // Делает: преобразует трату в безопасное для модели представление без user_id.
 // Возвращает: заполненный expenseView.
-func newExpenseView(item domain.Expense, location *time.Location) expenseView {
+func newExpenseView(item domain.Expense) expenseView {
 	return expenseView{
-		ID:            item.ID,
-		AmountRub:     formatKopecks(item.Amount),
-		Category:      string(item.Category),
-		CategoryLabel: item.Category.Label(),
-		Date:          domain.FormatDate(item.SpentAt, location),
-		Comment:       item.Comment,
+		ID:            int64(item.ID()),
+		AmountRub:     item.Amount().String(),
+		Category:      string(item.Category()),
+		CategoryLabel: item.Category().Label(),
+		Date:          item.SpentOn().String(),
+		Comment:       item.Comment().String(),
 	}
 }

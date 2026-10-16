@@ -189,5 +189,5 @@ components:
           properties:
             code:
               type: string
-              enum: [invalid_json, invalid_id, invalid_user, invalid_amount, invalid_date, invalid_period, unknown_category, not_found, internal]
+              enum: [invalid_json, invalid_id, invalid_user, invalid_amount, invalid_date, invalid_period, unknown_category, comment_too_long, not_found, internal]
             message: { type: string }

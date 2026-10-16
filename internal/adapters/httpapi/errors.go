@@ -8,10 +8,12 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/service/expense"
 )
 
+// errorBody — JSON-обёртка ошибки.
 type errorBody struct {
 	Error errorDetail `json:"error"`
 }
 
+// errorDetail — код и сообщение ошибки в JSON.
 type errorDetail struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
@@ -35,11 +37,13 @@ type errorRule struct {
 	code   string
 }
 
+// errorRules — таблица соответствия известных ошибок статусу и коду.
 var errorRules = []errorRule{
 	{domain.ErrInvalidAmount, http.StatusBadRequest, "invalid_amount"},
 	{domain.ErrInvalidUser, http.StatusBadRequest, "invalid_user"},
 	{domain.ErrUnknownCategory, http.StatusBadRequest, "unknown_category"},
 	{domain.ErrInvalidDate, http.StatusBadRequest, "invalid_date"},
+	{domain.ErrCommentTooLong, http.StatusBadRequest, "comment_too_long"},
 	{expense.ErrInvalidPeriod, http.StatusBadRequest, "invalid_period"},
 	{expense.ErrNotFound, http.StatusNotFound, "not_found"},
 }

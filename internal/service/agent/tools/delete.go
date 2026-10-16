@@ -3,14 +3,13 @@ package tools
 import (
 	"context"
 	"encoding/json"
+
+	"github.com/ValievM/family-expense-bot/internal/domain"
 	"github.com/ValievM/family-expense-bot/internal/service/agent"
-	"time"
 )
 
 // deleteExpenseTool удаляет трату владельца сообщения.
-type deleteExpenseTool struct {
-	location *time.Location
-}
+type deleteExpenseTool struct{}
 
 // deleteExpenseArguments — аргументы delete_expense.
 type deleteExpenseArguments struct {
@@ -42,12 +41,12 @@ func (tool deleteExpenseTool) Execute(ctx context.Context, expenses agent.UserEx
 		return nil, agent.ArgumentError{Message: "id must be a positive integer"}
 	}
 
-	item, err := expenses.Get(ctx, args.ID)
+	item, err := expenses.Get(ctx, domain.ExpenseID(args.ID))
 	if err != nil {
 		return nil, err
 	}
-	if err := expenses.Delete(ctx, args.ID); err != nil {
+	if err := expenses.Delete(ctx, item.ID()); err != nil {
 		return nil, err
 	}
-	return map[string]any{"deleted": true, "expense": newExpenseView(item, tool.location)}, nil
+	return map[string]any{"deleted": true, "expense": newExpenseView(item)}, nil
 }

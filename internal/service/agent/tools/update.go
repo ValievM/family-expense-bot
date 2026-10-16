@@ -3,17 +3,13 @@ package tools
 import (
 	"context"
 	"encoding/json"
-	"github.com/ValievM/family-expense-bot/internal/service/agent"
-	"time"
 
 	"github.com/ValievM/family-expense-bot/internal/domain"
-	"github.com/ValievM/family-expense-bot/internal/service/expense"
+	"github.com/ValievM/family-expense-bot/internal/service/agent"
 )
 
 // updateExpenseTool частично меняет трату владельца сообщения.
-type updateExpenseTool struct {
-	location *time.Location
-}
+type updateExpenseTool struct{}
 
 // updateExpenseArguments — аргументы update_expense; владельца задаёт только scope.
 type updateExpenseArguments struct {
@@ -52,43 +48,52 @@ func (tool updateExpenseTool) Execute(ctx context.Context, expenses agent.UserEx
 	if args.ID <= 0 {
 		return nil, agent.ArgumentError{Message: "id must be a positive integer"}
 	}
-	patch, err := tool.buildPatch(args)
+	changes, err := tool.buildChanges(args)
 	if err != nil {
 		return nil, err
 	}
 
-	updated, err := expenses.Update(ctx, args.ID, patch)
+	updated, err := expenses.Update(ctx, domain.ExpenseID(args.ID), changes)
 	if err != nil {
 		return nil, err
 	}
-	return newExpenseView(updated, tool.location), nil
+	return newExpenseView(updated), nil
 }
 
 // Принимает: args — разобранные аргументы update_expense.
-// Делает: переводит рубли в копейки, разбирает дату и проверяет, что есть хотя бы одно изменение.
-// Возвращает: expense.Patch либо ArgumentError или domain.ErrInvalidAmount.
-func (tool updateExpenseTool) buildPatch(args updateExpenseArguments) (expense.Patch, error) {
-	var patch expense.Patch
+// Делает: собирает значения домена только для переданных полей и проверяет, что есть хотя бы одно изменение.
+// Возвращает: domain.Changes либо ArgumentError или доменную ошибку значения.
+func (tool updateExpenseTool) buildChanges(args updateExpenseArguments) (domain.Changes, error) {
+	var changes domain.Changes
 	if args.Amount != nil {
-		kopecks, err := rublesToKopecks(*args.Amount)
+		amount, err := domain.MoneyFromRubles(*args.Amount)
 		if err != nil {
-			return patch, err
+			return changes, err
 		}
-		patch.Amount = &kopecks
+		changes.Amount = &amount
 	}
 	if args.Category != nil {
-		category := domain.Category(*args.Category)
-		patch.Category = &category
+		category, err := domain.ParseCategory(*args.Category)
+		if err != nil {
+			return changes, err
+		}
+		changes.Category = &category
 	}
-	spentAt, err := parseDateArgument(args.Date, tool.location)
+	spentOn, err := parseDateArgument(args.Date)
 	if err != nil {
-		return patch, err
+		return changes, err
 	}
-	patch.SpentAt = spentAt
-	patch.Comment = args.Comment
+	changes.SpentOn = spentOn
+	if args.Comment != nil {
+		comment, err := domain.NewComment(*args.Comment)
+		if err != nil {
+			return changes, err
+		}
+		changes.Comment = &comment
+	}
 
-	if patch.Amount == nil && patch.Category == nil && patch.SpentAt == nil && patch.Comment == nil {
-		return patch, agent.ArgumentError{Message: "nothing to update: pass at least one of amount, category, date, comment"}
+	if changes.Amount == nil && changes.Category == nil && changes.SpentOn == nil && changes.Comment == nil {
+		return changes, agent.ArgumentError{Message: "nothing to update: pass at least one of amount, category, date, comment"}
 	}
-	return patch, nil
+	return changes, nil
 }

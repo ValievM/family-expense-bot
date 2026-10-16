@@ -3,7 +3,6 @@ package httpapi
 import (
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/ValievM/family-expense-bot/internal/domain"
 	"github.com/ValievM/family-expense-bot/internal/service/expense"
@@ -39,7 +38,7 @@ func (server *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	items := make([]userResponse, 0, len(userIDs))
 	for _, userID := range userIDs {
-		items = append(items, userResponse{UserID: userID})
+		items = append(items, userResponse{UserID: userID.Int64()})
 	}
 	writeJSON(w, http.StatusOK, listResponse[userResponse]{Items: items})
 }
@@ -48,7 +47,7 @@ func (server *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 // Делает: разбирает фильтр из query, запрашивает расходы у сервиса и отдаёт их списком (пустой список, не null).
 // Возвращает: ничего; при ошибке разбора или сервиса пишет её через writeError.
 func (server *Server) handleListExpenses(w http.ResponseWriter, r *http.Request) {
-	filter, err := server.parseListFilter(r)
+	filter, err := parseListFilter(r)
 	if err != nil {
 		server.writeError(w, r, err)
 		return
@@ -60,13 +59,13 @@ func (server *Server) handleListExpenses(w http.ResponseWriter, r *http.Request)
 	}
 	items := make([]expenseResponse, 0, len(expenses))
 	for _, item := range expenses {
-		items = append(items, server.toResponse(item))
+		items = append(items, toResponse(item))
 	}
 	writeJSON(w, http.StatusOK, listResponse[expenseResponse]{Items: items})
 }
 
 // Принимает: w — writer ответа, r — входящий запрос с JSON-телом.
-// Делает: декодирует тело, разбирает необязательную дату и создаёт расход через сервис; при отсутствии даты оставляет её значение по умолчанию сервису.
+// Делает: декодирует тело, переводит поля в доменные значения и создаёт расход через сервис; при отсутствии даты оставляет её значение по умолчанию сервису.
 // Возвращает: ничего; при успехе пишет 201 и созданный расход, иначе ошибку через writeError.
 func (server *Server) handleCreateExpense(w http.ResponseWriter, r *http.Request) {
 	var request createExpenseRequest
@@ -74,27 +73,17 @@ func (server *Server) handleCreateExpense(w http.ResponseWriter, r *http.Request
 		server.writeError(w, r, err)
 		return
 	}
-	spentAt, err := server.parseOptionalDate(request.SpentAt)
+	input, err := request.toInput()
 	if err != nil {
 		server.writeError(w, r, err)
 		return
 	}
-
-	item := domain.Expense{
-		UserID:   request.UserID,
-		Amount:   request.Amount,
-		Category: domain.Category(request.Category),
-		Comment:  request.Comment,
-	}
-	if spentAt != nil {
-		item.SpentAt = *spentAt
-	}
-	created, err := server.expenses.Create(r.Context(), item)
+	created, err := server.expenses.Create(r.Context(), input)
 	if err != nil {
 		server.writeError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, server.toResponse(created))
+	writeJSON(w, http.StatusCreated, toResponse(created))
 }
 
 // Принимает: w — writer ответа, r — входящий запрос с id в пути и JSON-телом.
@@ -111,23 +100,17 @@ func (server *Server) handleUpdateExpense(w http.ResponseWriter, r *http.Request
 		server.writeError(w, r, err)
 		return
 	}
-	spentAt, err := server.parseOptionalDate(request.SpentAt)
+	changes, err := request.toChanges()
 	if err != nil {
 		server.writeError(w, r, err)
 		return
 	}
-
-	patch := expense.Patch{Amount: request.Amount, SpentAt: spentAt, Comment: request.Comment}
-	if request.Category != nil {
-		category := domain.Category(*request.Category)
-		patch.Category = &category
-	}
-	updated, err := server.expenses.Update(r.Context(), id, patch)
+	updated, err := server.expenses.Update(r.Context(), id, changes)
 	if err != nil {
 		server.writeError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, server.toResponse(updated))
+	writeJSON(w, http.StatusOK, toResponse(updated))
 }
 
 // Принимает: w — writer ответа, r — входящий запрос с id в пути.
@@ -147,28 +130,35 @@ func (server *Server) handleDeleteExpense(w http.ResponseWriter, r *http.Request
 }
 
 // Принимает: r — входящий запрос с query-параметрами user_id, category, from, to.
-// Делает: строит expense.ListFilter из непустых параметров, даты разбирает в часовом поясе сервера.
-// Возвращает: заполненный фильтр; requestError при нечисловом user_id или неверной дате.
-func (server *Server) parseListFilter(r *http.Request) (expense.ListFilter, error) {
+// Делает: строит expense.ListFilter из непустых параметров через доменные конструкторы.
+// Возвращает: заполненный фильтр; requestError при нечисловом user_id, доменную ошибку при неверных user_id, category или дате.
+func parseListFilter(r *http.Request) (expense.ListFilter, error) {
 	query := r.URL.Query()
 	var filter expense.ListFilter
 
 	if raw := query.Get("user_id"); raw != "" {
-		userID, err := strconv.ParseInt(raw, 10, 64)
+		value, err := strconv.ParseInt(raw, 10, 64)
 		if err != nil {
 			return filter, requestError{code: "invalid_user", message: "user_id must be an integer"}
 		}
-		filter.UserID = &userID
+		owner, err := domain.NewUserID(value)
+		if err != nil {
+			return filter, err
+		}
+		filter.Owner = &owner
 	}
 	if raw := query.Get("category"); raw != "" {
-		category := domain.Category(raw)
+		category, err := domain.ParseCategory(raw)
+		if err != nil {
+			return filter, err
+		}
 		filter.Category = &category
 	}
-	from, err := server.parseOptionalDate(optionalString(query.Get("from")))
+	from, err := parseOptionalDay(optionalString(query.Get("from")))
 	if err != nil {
 		return filter, err
 	}
-	to, err := server.parseOptionalDate(optionalString(query.Get("to")))
+	to, err := parseOptionalDay(optionalString(query.Get("to")))
 	if err != nil {
 		return filter, err
 	}
@@ -176,29 +166,29 @@ func (server *Server) parseListFilter(r *http.Request) (expense.ListFilter, erro
 	return filter, nil
 }
 
-// Принимает: raw — необязательная строка даты формата YYYY-MM-DD.
-// Делает: разбирает дату в часовом поясе сервера, если она передана.
-// Возвращает: указатель на дату или nil, если raw равен nil; requestError invalid_date при неверном формате.
-func (server *Server) parseOptionalDate(raw *string) (*time.Time, error) {
+// Принимает: raw — необязательная строка дня формата YYYY-MM-DD.
+// Делает: разбирает день, если он передан.
+// Возвращает: указатель на день или nil, если raw равен nil; requestError invalid_date при неверном формате.
+func parseOptionalDay(raw *string) (*domain.Day, error) {
 	if raw == nil {
 		return nil, nil
 	}
-	parsed, err := domain.ParseDate(*raw, server.location)
+	day, err := domain.ParseDay(*raw)
 	if err != nil {
 		return nil, requestError{code: "invalid_date", message: "date must use the YYYY-MM-DD format"}
 	}
-	return &parsed, nil
+	return &day, nil
 }
 
 // Принимает: r — входящий запрос с path-параметром id.
 // Делает: читает id расхода из пути и проверяет, что это положительное целое.
 // Возвращает: id; requestError invalid_id при ошибке разбора или значении не больше нуля.
-func parseID(r *http.Request) (int64, error) {
+func parseID(r *http.Request) (domain.ExpenseID, error) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil || id <= 0 {
 		return 0, requestError{code: "invalid_id", message: "expense id must be a positive integer"}
 	}
-	return id, nil
+	return domain.ExpenseID(id), nil
 }
 
 // Принимает: value — строка из query.

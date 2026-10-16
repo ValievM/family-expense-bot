@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/ValievM/family-expense-bot/internal/domain"
 	"github.com/ValievM/family-expense-bot/internal/service/agent"
@@ -25,14 +24,14 @@ func decodeArguments(raw json.RawMessage, destination any) error {
 	return nil
 }
 
-// Принимает: raw — необязательная дата YYYY-MM-DD от модели; location — часовой пояс календаря.
+// Принимает: raw — необязательная дата YYYY-MM-DD от модели.
 // Делает: разбирает дату, если она передана.
-// Возвращает: указатель на дату, nil для отсутствующей даты либо ArgumentError при неверном формате.
-func parseDateArgument(raw *string, location *time.Location) (*time.Time, error) {
+// Возвращает: указатель на день, nil для отсутствующей даты либо ArgumentError при неверном формате.
+func parseDateArgument(raw *string) (*domain.Day, error) {
 	if raw == nil || *raw == "" {
 		return nil, nil
 	}
-	parsed, err := domain.ParseDate(*raw, location)
+	parsed, err := domain.ParseDay(*raw)
 	if err != nil {
 		return nil, agent.ArgumentError{Message: fmt.Sprintf("date %q must use the YYYY-MM-DD format", *raw)}
 	}

@@ -25,6 +25,7 @@ import (
 	"github.com/ValievM/family-expense-bot/internal/adapters/postgres"
 	"github.com/ValievM/family-expense-bot/internal/adapters/telegram"
 	"github.com/ValievM/family-expense-bot/internal/config"
+	"github.com/ValievM/family-expense-bot/internal/domain"
 	"github.com/ValievM/family-expense-bot/internal/service/agent"
 	"github.com/ValievM/family-expense-bot/internal/service/agent/tools"
 	"github.com/ValievM/family-expense-bot/internal/service/expense"
@@ -64,10 +65,10 @@ func run() error {
 	}
 	defer pool.Close()
 
-	service := expense.NewService(postgres.NewRepository(pool, cfg.Location), nil, cfg.Location)
+	service := expense.NewService(postgres.NewRepository(pool), nil, cfg.Location)
 	httpServer := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           httpapi.NewServer(service, cfg.Location, logger).Handler(),
+		Handler:           httpapi.NewServer(service, logger).Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      30 * time.Second,
@@ -170,8 +171,8 @@ func newBot(cfg config.Config, service *expense.Service, logger *slog.Logger) (*
 	if err != nil {
 		return nil, err
 	}
-	scope := func(userID int64) agent.UserExpenses { return service.ForUser(userID) }
-	assistant := agent.New(model, scope, tools.Default(cfg.Location), agent.WithLocation(cfg.Location), agent.WithLogger(logger))
+	scope := func(owner domain.UserID) agent.UserExpenses { return service.ForUser(owner) }
+	assistant := agent.New(model, scope, tools.Default(), agent.WithLocation(cfg.Location), agent.WithLogger(logger))
 	return telegram.NewBot(telegram.NewClient(cfg.TelegramToken), assistant, cfg, telegram.WithLogger(logger)), nil
 }
 

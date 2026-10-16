@@ -5,7 +5,6 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/ValievM/family-expense-bot/internal/domain"
 	"github.com/ValievM/family-expense-bot/internal/service/expense"
@@ -13,46 +12,42 @@ import (
 
 // ExpenseService — use case'ы, нужные панели; контракт объявляет потребитель (адаптер).
 type ExpenseService interface {
-	// Принимает: ctx — контекст запроса, item — новый расход.
-	// Делает: создаёт расход.
+	// Принимает: ctx — контекст запроса, input — данные нового расхода.
+	// Делает: создаёт расход; пустая дата означает «сегодня».
 	// Возвращает: сохранённый расход или ошибку.
-	Create(ctx context.Context, item domain.Expense) (domain.Expense, error)
+	Create(ctx context.Context, input expense.CreateInput) (domain.Expense, error)
 	// Принимает: ctx — контекст запроса, filter — фильтр списка.
 	// Делает: выбирает расходы по фильтру.
 	// Возвращает: список расходов или ошибку.
 	List(ctx context.Context, filter expense.ListFilter) ([]domain.Expense, error)
 	// Принимает: ctx — контекст запроса.
 	// Делает: выбирает идентификаторы пользователей.
-	// Возвращает: список id или ошибку.
-	ListUserIDs(ctx context.Context) ([]int64, error)
-	// Принимает: ctx — контекст запроса, id — идентификатор расхода, patch — изменяемые поля.
+	// Возвращает: список идентификаторов или ошибку.
+	ListUserIDs(ctx context.Context) ([]domain.UserID, error)
+	// Принимает: ctx — контекст запроса, id — идентификатор расхода, changes — изменяемые поля.
 	// Делает: частично обновляет расход.
 	// Возвращает: обновлённый расход или ошибку (в том числе expense.ErrNotFound).
-	Update(ctx context.Context, id int64, patch expense.Patch) (domain.Expense, error)
+	Update(ctx context.Context, id domain.ExpenseID, changes domain.Changes) (domain.Expense, error)
 	// Принимает: ctx — контекст запроса, id — идентификатор расхода.
 	// Делает: удаляет расход.
 	// Возвращает: nil при успехе или ошибку (в том числе expense.ErrNotFound).
-	Delete(ctx context.Context, id int64) error
+	Delete(ctx context.Context, id domain.ExpenseID) error
 }
 
 // Server переводит HTTP-запросы в use case'ы расходов.
 type Server struct {
 	expenses ExpenseService
-	location *time.Location
 	logger   *slog.Logger
 }
 
-// Принимает: expenses — сервис расходов, location — часовой пояс для дат, logger — логгер.
-// Делает: создаёт Server; nil location заменяется на UTC, nil logger — на slog.Default().
+// Принимает: expenses — сервис расходов, logger — логгер.
+// Делает: создаёт Server; nil logger заменяется на slog.Default().
 // Возвращает: указатель на Server.
-func NewServer(expenses ExpenseService, location *time.Location, logger *slog.Logger) *Server {
-	if location == nil {
-		location = time.UTC
-	}
+func NewServer(expenses ExpenseService, logger *slog.Logger) *Server {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Server{expenses: expenses, location: location, logger: logger}
+	return &Server{expenses: expenses, logger: logger}
 }
 
 // Принимает: ничего.

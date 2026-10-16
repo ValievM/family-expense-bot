@@ -3,16 +3,14 @@ package tools
 import (
 	"context"
 	"encoding/json"
-	"github.com/ValievM/family-expense-bot/internal/service/agent"
-	"time"
 
 	"github.com/ValievM/family-expense-bot/internal/domain"
+	"github.com/ValievM/family-expense-bot/internal/service/agent"
+	"github.com/ValievM/family-expense-bot/internal/service/expense"
 )
 
 // addExpenseTool создаёт трату владельца сообщения.
-type addExpenseTool struct {
-	location *time.Location
-}
+type addExpenseTool struct{}
 
 // addExpenseArguments — аргументы add_expense; поля user_id намеренно нет.
 type addExpenseArguments struct {
@@ -39,29 +37,33 @@ func (tool addExpenseTool) Spec() agent.ToolSpec {
 }
 
 // Принимает: ctx — контекст запроса; expenses — траты владельца сообщения; arguments — JSON от модели.
-// Делает: разбирает аргументы, переводит рубли в копейки и сохраняет трату через сервис.
+// Делает: разбирает аргументы, собирает значения домена (сумма, категория, день, комментарий) и сохраняет трату через сервис.
 // Возвращает: созданную трату в виде expenseView либо ошибку аргументов или валидации.
 func (tool addExpenseTool) Execute(ctx context.Context, expenses agent.UserExpenses, arguments json.RawMessage) (any, error) {
 	var args addExpenseArguments
 	if err := decodeArguments(arguments, &args); err != nil {
 		return nil, err
 	}
-	kopecks, err := rublesToKopecks(args.Amount)
+	amount, err := domain.MoneyFromRubles(args.Amount)
 	if err != nil {
 		return nil, err
 	}
-	spentAt, err := parseDateArgument(args.Date, tool.location)
+	category, err := domain.ParseCategory(args.Category)
+	if err != nil {
+		return nil, err
+	}
+	spentOn, err := parseDateArgument(args.Date)
+	if err != nil {
+		return nil, err
+	}
+	comment, err := domain.NewComment(args.Comment)
 	if err != nil {
 		return nil, err
 	}
 
-	item := domain.Expense{Amount: kopecks, Category: domain.Category(args.Category), Comment: args.Comment}
-	if spentAt != nil {
-		item.SpentAt = *spentAt
-	}
-	created, err := expenses.Create(ctx, item)
+	created, err := expenses.Create(ctx, expense.UserCreateInput{Amount: amount, Category: category, SpentOn: spentOn, Comment: comment})
 	if err != nil {
 		return nil, err
 	}
-	return newExpenseView(created, tool.location), nil
+	return newExpenseView(created), nil
 }

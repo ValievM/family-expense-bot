@@ -30,7 +30,7 @@ const systemPromptTemplate = `Ты помощник семейного учёт�
 func buildSystemPrompt(now time.Time, location *time.Location) string {
 	local := now.In(location)
 	return fmt.Sprintf(systemPromptTemplate,
-		domain.FormatDate(local, location), weekdayNames[local.Weekday()], location.String(), categoryGuide())
+		domain.DayOf(now, location).String(), weekdayNames[local.Weekday()], location.String(), categoryGuide())
 }
 
 // Принимает: ничего.

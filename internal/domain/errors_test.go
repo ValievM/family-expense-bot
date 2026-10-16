@@ -14,6 +14,7 @@ func TestValidationErrorsRemainDistinct(t *testing.T) {
 		ErrInvalidUser,
 		ErrUnknownCategory,
 		ErrInvalidDate,
+		ErrCommentTooLong,
 	}
 
 	for index, validationErr := range validationErrors {

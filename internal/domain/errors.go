@@ -11,4 +11,6 @@ var (
 	ErrUnknownCategory = errors.New("category is unknown")
 	// ErrInvalidDate — календарная дата отсутствует или не разбирается.
 	ErrInvalidDate = errors.New("date is invalid")
+	// ErrCommentTooLong — комментарий длиннее допустимого.
+	ErrCommentTooLong = errors.New("comment is too long")
 )

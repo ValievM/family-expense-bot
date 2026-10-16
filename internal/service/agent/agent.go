@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"log/slog"
 	"time"
+
+	"github.com/ValievM/family-expense-bot/internal/domain"
 )
 
 const (
@@ -18,7 +20,7 @@ const (
 var ErrStepLimit = errors.New("agent exceeded the tool-call step limit")
 
 // ScopeFactory выдаёт траты, жёстко привязанные к одному Telegram-пользователю; владелец берётся только из кода.
-type ScopeFactory func(userID int64) UserExpenses
+type ScopeFactory func(owner domain.UserID) UserExpenses
 
 // Clock отдаёт текущее время, чтобы промпт и тесты были детерминированными.
 type Clock interface {
@@ -116,7 +118,11 @@ func New(llm LLM, scope ScopeFactory, tools *ToolSet, options ...Option) *Agent 
 // Делает: гоняет цикл «модель → инструменты → модель», где владельцем данных всегда служит userID, и запоминает реплику в истории.
 // Возвращает: итоговый ответ для пользователя либо ошибку LLM, ErrStepLimit или сбой инфраструктуры.
 func (agent *Agent) Handle(ctx context.Context, userID int64, text string) (string, error) {
-	expenses := agent.scope(userID)
+	owner, err := domain.NewUserID(userID)
+	if err != nil {
+		return "", fmt.Errorf("identify message author: %w", err)
+	}
+	expenses := agent.scope(owner)
 	userMessage := Message{Role: RoleUser, Content: text}
 
 	messages := []Message{{Role: RoleSystem, Content: buildSystemPrompt(agent.clock.Now(), agent.location)}}

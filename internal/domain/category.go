@@ -66,3 +66,14 @@ func Categories() []Category {
 	}
 	return categories
 }
+
+// Принимает: value — строка с ключом категории.
+// Делает: проверяет, что ключ принадлежит закрытому набору.
+// Возвращает: Category либо ErrUnknownCategory.
+func ParseCategory(value string) (Category, error) {
+	category := Category(value)
+	if !category.IsValid() {
+		return "", ErrUnknownCategory
+	}
+	return category, nil
+}

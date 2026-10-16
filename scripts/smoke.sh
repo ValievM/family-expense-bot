@@ -28,7 +28,8 @@ call 200 GET / | grep -q '<div id="root"' || fail "web panel index is not served
 
 created="$(call 201 POST /api/expenses '{"user_id":900001,"amount":35000,"category":"food","comment":"smoke coffee"}')"
 id="$(sed -E 's/.*"id":([0-9]+).*/\1/' <<<"$created")"
-call 201 POST /api/expenses '{"user_id":900002,"amount":120000,"category":"transport","spent_at":"2026-01-15"}' >/dev/null
+second="$(call 201 POST /api/expenses '{"user_id":900002,"amount":120000,"category":"transport","spent_at":"2026-01-15"}')"
+second_id="$(sed -E 's/.*"id":([0-9]+).*/\1/' <<<"$second")"
 
 only_first="$(call 200 GET '/api/expenses?user_id=900001')"
 grep -q 'smoke coffee' <<<"$only_first" || fail "filter by user lost the expense"
@@ -37,6 +38,8 @@ grep -q 'smoke coffee' <<<"$only_first" || fail "filter by user lost the expense
 call 200 PATCH "/api/expenses/$id" '{"amount":45000}' | grep -q '"amount":45000' || fail "patch did not change the amount"
 call 400 POST /api/expenses '{"user_id":900001,"amount":0,"category":"food"}' >/dev/null
 call 404 DELETE /api/expenses/999999999 >/dev/null
+call 400 POST /api/expenses '{"user_id":900001,"amount":100,"category":"food","comment":"'"$(printf 'я%.0s' $(seq 1 501))"'"}' >/dev/null
 call 204 DELETE "/api/expenses/$id" >/dev/null
+call 204 DELETE "/api/expenses/$second_id" >/dev/null
 
 echo "SMOKE OK"

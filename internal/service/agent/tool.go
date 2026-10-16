@@ -79,6 +79,7 @@ func isRecoverable(err error) bool {
 		errors.Is(err, domain.ErrInvalidUser) ||
 		errors.Is(err, domain.ErrUnknownCategory) ||
 		errors.Is(err, domain.ErrInvalidDate) ||
+		errors.Is(err, domain.ErrCommentTooLong) ||
 		errors.Is(err, expense.ErrInvalidPeriod) ||
 		errors.Is(err, expense.ErrNotFound)
 }

@@ -55,15 +55,15 @@ func say(content string) agent.Message {
 
 // memoryRepository — хранилище трат в памяти для тестов.
 type memoryRepository struct {
-	records map[int64]domain.Expense
-	nextID  int64
+	records map[domain.ExpenseID]domain.Expense
+	nextID  domain.ExpenseID
 }
 
 // Принимает: ничего.
 // Делает: создаёт пустое хранилище.
 // Возвращает: указатель на хранилище.
 func newMemoryRepository() *memoryRepository {
-	return &memoryRepository{records: make(map[int64]domain.Expense)}
+	return &memoryRepository{records: make(map[domain.ExpenseID]domain.Expense)}
 }
 
 // Принимает: _ — контекст не используется; item — трата без ID.
@@ -71,15 +71,15 @@ func newMemoryRepository() *memoryRepository {
 // Возвращает: сохранённую трату и nil.
 func (repository *memoryRepository) Create(_ context.Context, item domain.Expense) (domain.Expense, error) {
 	repository.nextID++
-	item.ID = repository.nextID
-	repository.records[item.ID] = item
+	item = item.WithID(repository.nextID)
+	repository.records[item.ID()] = item
 	return item, nil
 }
 
 // Принимает: _ — контекст не используется; id — идентификатор траты.
 // Делает: ищет трату по ID.
 // Возвращает: трату либо expense.ErrNotFound.
-func (repository *memoryRepository) Get(_ context.Context, id int64) (domain.Expense, error) {
+func (repository *memoryRepository) Get(_ context.Context, id domain.ExpenseID) (domain.Expense, error) {
 	item, found := repository.records[id]
 	if !found {
 		return domain.Expense{}, expense.ErrNotFound
@@ -93,25 +93,25 @@ func (repository *memoryRepository) Get(_ context.Context, id int64) (domain.Exp
 func (repository *memoryRepository) List(_ context.Context, filter expense.ListFilter) ([]domain.Expense, error) {
 	items := make([]domain.Expense, 0, len(repository.records))
 	for _, item := range repository.records {
-		if filter.UserID != nil && item.UserID != *filter.UserID {
+		if filter.Owner != nil && item.Owner() != *filter.Owner {
 			continue
 		}
-		if filter.Category != nil && item.Category != *filter.Category {
+		if filter.Category != nil && item.Category() != *filter.Category {
 			continue
 		}
-		if filter.From != nil && item.SpentAt.Before(*filter.From) {
+		if filter.From != nil && item.SpentOn().Compare(*filter.From) < 0 {
 			continue
 		}
-		if filter.To != nil && item.SpentAt.After(*filter.To) {
+		if filter.To != nil && item.SpentOn().Compare(*filter.To) > 0 {
 			continue
 		}
 		items = append(items, item)
 	}
 	sort.Slice(items, func(i, j int) bool {
-		if !items[i].SpentAt.Equal(items[j].SpentAt) {
-			return items[i].SpentAt.After(items[j].SpentAt)
+		if cmp := items[i].SpentOn().Compare(items[j].SpentOn()); cmp != 0 {
+			return cmp > 0
 		}
-		return items[i].ID > items[j].ID
+		return items[i].ID() > items[j].ID()
 	})
 	return items, nil
 }
@@ -119,16 +119,16 @@ func (repository *memoryRepository) List(_ context.Context, filter expense.ListF
 // Принимает: _ — контекст не используется.
 // Делает: собирает уникальных владельцев трат.
 // Возвращает: отсортированные ID и nil.
-func (repository *memoryRepository) ListUserIDs(_ context.Context) ([]int64, error) {
-	seen := make(map[int64]struct{})
-	userIDs := make([]int64, 0)
+func (repository *memoryRepository) ListUserIDs(_ context.Context) ([]domain.UserID, error) {
+	seen := make(map[domain.UserID]struct{})
+	userIDs := make([]domain.UserID, 0)
 	for _, item := range repository.records {
-		if _, exists := seen[item.UserID]; !exists {
-			seen[item.UserID] = struct{}{}
-			userIDs = append(userIDs, item.UserID)
+		if _, exists := seen[item.Owner()]; !exists {
+			seen[item.Owner()] = struct{}{}
+			userIDs = append(userIDs, item.Owner())
 		}
 	}
-	sort.Slice(userIDs, func(i, j int) bool { return userIDs[i] < userIDs[j] })
+	sort.Slice(userIDs, func(i, j int) bool { return userIDs[i].Int64() < userIDs[j].Int64() })
 	return userIDs, nil
 }
 
@@ -136,17 +136,17 @@ func (repository *memoryRepository) ListUserIDs(_ context.Context) ([]int64, err
 // Делает: заменяет сохранённую трату.
 // Возвращает: новую трату либо expense.ErrNotFound.
 func (repository *memoryRepository) Update(_ context.Context, item domain.Expense) (domain.Expense, error) {
-	if _, found := repository.records[item.ID]; !found {
+	if _, found := repository.records[item.ID()]; !found {
 		return domain.Expense{}, expense.ErrNotFound
 	}
-	repository.records[item.ID] = item
+	repository.records[item.ID()] = item
 	return item, nil
 }
 
 // Принимает: _ — контекст не используется; id — идентификатор траты.
 // Делает: удаляет трату.
 // Возвращает: nil либо expense.ErrNotFound.
-func (repository *memoryRepository) Delete(_ context.Context, id int64) error {
+func (repository *memoryRepository) Delete(_ context.Context, id domain.ExpenseID) error {
 	if _, found := repository.records[id]; !found {
 		return expense.ErrNotFound
 	}
@@ -167,7 +167,7 @@ type harness struct {
 	agent      *agent.Agent
 	llm        *scriptedLLM
 	repository *memoryRepository
-	today      time.Time
+	now        time.Time
 }
 
 // Принимает: t — тестовый контекст; replies — заготовленные ответы модели.
@@ -180,21 +180,37 @@ func newHarness(t *testing.T, replies ...agent.Message) *harness {
 	repository := newMemoryRepository()
 	service := expense.NewService(repository, fixedClock{now: now}, moscow)
 	llm := &scriptedLLM{replies: replies}
-	scope := func(userID int64) agent.UserExpenses { return service.ForUser(userID) }
+	scope := func(owner domain.UserID) agent.UserExpenses { return service.ForUser(owner) }
 	return &harness{
-		agent:      agent.New(llm, scope, tools.Default(moscow), agent.WithClock(fixedClock{now: now}), agent.WithLocation(moscow)),
+		agent:      agent.New(llm, scope, tools.Default(), agent.WithClock(fixedClock{now: now}), agent.WithLocation(moscow)),
 		llm:        llm,
 		repository: repository,
-		today:      time.Date(2026, time.October, 16, 0, 0, 0, 0, moscow),
+		now:        now,
 	}
 }
 
-// Принимает: userID — владелец; id — желаемый ID; amount — копейки; category — категория; date — день YYYY-MM-DD.
-// Делает: кладёт трату прямо в хранилище, минуя агента.
+// Принимает: t — тестовый контекст; userID — владелец; id — желаемый ID; amount — копейки; category — категория; date — день YYYY-MM-DD.
+// Делает: восстанавливает трату через домен и кладёт её прямо в хранилище, минуя агента.
 // Возвращает: ничего.
-func (h *harness) seed(userID, id, amount int64, category domain.Category, date string) {
-	spent, _ := domain.ParseDate(date, h.today.Location())
-	h.repository.records[id] = domain.Expense{ID: id, UserID: userID, Amount: amount, Category: category, SpentAt: spent}
+func (h *harness) seed(t *testing.T, userID int64, id domain.ExpenseID, amount int64, category domain.Category, date string) {
+	t.Helper()
+	owner, err := domain.NewUserID(userID)
+	if err != nil {
+		t.Fatalf("NewUserID() error = %v", err)
+	}
+	money, err := domain.NewMoney(amount)
+	if err != nil {
+		t.Fatalf("NewMoney() error = %v", err)
+	}
+	day, err := domain.ParseDay(date)
+	if err != nil {
+		t.Fatalf("ParseDay() error = %v", err)
+	}
+	item, err := domain.Restore(domain.Snapshot{ID: id, Owner: owner, Amount: money, Category: category, SpentOn: day, CreatedAt: h.now, UpdatedAt: h.now})
+	if err != nil {
+		t.Fatalf("Restore() error = %v", err)
+	}
+	h.repository.records[id] = item
 	if id > h.repository.nextID {
 		h.repository.nextID = id
 	}
@@ -232,11 +248,11 @@ func TestHandleAddsExpenseForTrustedUser(t *testing.T) {
 		t.Errorf("answer = %q", answer)
 	}
 	saved := h.repository.records[1]
-	if saved.UserID != 42 || saved.Amount != 35000 || saved.Category != domain.CategoryFood || saved.Comment != "кофе" {
+	if saved.Owner().Int64() != 42 || saved.Amount().Kopecks() != 35000 || saved.Category() != domain.CategoryFood || saved.Comment().String() != "кофе" {
 		t.Errorf("saved = %+v", saved)
 	}
-	if !saved.SpentAt.Equal(h.today) {
-		t.Errorf("SpentAt = %v, want today %v", saved.SpentAt, h.today)
+	if saved.SpentOn().String() != "2026-10-16" {
+		t.Errorf("SpentOn = %v, want today 2026-10-16", saved.SpentOn())
 	}
 	system := h.llm.requests[0].Messages[0].Content
 	for _, want := range []string{"2026-10-16", "пятница", "MSK", "food (еда)", "shopping (покупки)"} {
@@ -275,10 +291,10 @@ func TestListReturnsComputedTotalAndLatestID(t *testing.T) {
 		toolCall("c1", "list_expenses", `{"category":"food","from":"2026-10-01","to":"2026-10-31"}`),
 		say("Итого 1500 ₽"),
 	)
-	h.seed(42, 1, 35000, domain.CategoryFood, "2026-10-02")
-	h.seed(42, 2, 115000, domain.CategoryFood, "2026-10-10")
-	h.seed(42, 3, 99900, domain.CategoryTransport, "2026-10-11")
-	h.seed(7, 4, 50000, domain.CategoryFood, "2026-10-12")
+	h.seed(t, 42, 1, 35000, domain.CategoryFood, "2026-10-02")
+	h.seed(t, 42, 2, 115000, domain.CategoryFood, "2026-10-10")
+	h.seed(t, 42, 3, 99900, domain.CategoryTransport, "2026-10-11")
+	h.seed(t, 7, 4, 50000, domain.CategoryFood, "2026-10-12")
 
 	if _, err := h.agent.Handle(context.Background(), 42, "сколько на еду в этом месяце"); err != nil {
 		t.Fatalf("Handle() error = %v", err)
@@ -306,14 +322,14 @@ func TestUpdateLastExpenseAfterListing(t *testing.T) {
 		toolCall("c2", "update_expense", `{"id":2,"amount":450}`),
 		say("Исправил на 450 ₽."),
 	)
-	h.seed(42, 1, 10000, domain.CategoryOther, "2026-10-01")
-	h.seed(42, 2, 35000, domain.CategoryFood, "2026-10-16")
+	h.seed(t, 42, 1, 10000, domain.CategoryOther, "2026-10-01")
+	h.seed(t, 42, 2, 35000, domain.CategoryFood, "2026-10-16")
 
 	if _, err := h.agent.Handle(context.Background(), 42, "последнее было не 350, а 450"); err != nil {
 		t.Fatalf("Handle() error = %v", err)
 	}
 
-	if got := h.repository.records[2]; got.Amount != 45000 || got.Category != domain.CategoryFood {
+	if got := h.repository.records[2]; got.Amount().Kopecks() != 45000 || got.Category() != domain.CategoryFood {
 		t.Errorf("record = %+v, want amount 45000 and untouched category", got)
 	}
 }
@@ -323,7 +339,7 @@ func TestUpdateLastExpenseAfterListing(t *testing.T) {
 // Возвращает: ничего.
 func TestDeleteOwnExpense(t *testing.T) {
 	h := newHarness(t, toolCall("c1", "delete_expense", `{"id":1}`), say("Удалил такси."))
-	h.seed(42, 1, 120000, domain.CategoryTransport, "2026-10-15")
+	h.seed(t, 42, 1, 120000, domain.CategoryTransport, "2026-10-15")
 
 	if _, err := h.agent.Handle(context.Background(), 42, "удали такси"); err != nil {
 		t.Fatalf("Handle() error = %v", err)
@@ -346,13 +362,13 @@ func TestAgentCannotTouchForeignExpenseByID(t *testing.T) {
 		toolCall("c2", "update_expense", `{"id":9,"amount":1}`),
 		say("Не нашёл."),
 	)
-	h.seed(7, 9, 99900, domain.CategoryShopping, "2026-10-01")
+	h.seed(t, 7, 9, 99900, domain.CategoryShopping, "2026-10-01")
 
 	if _, err := h.agent.Handle(context.Background(), 42, "удали и измени трату 9"); err != nil {
 		t.Fatalf("Handle() error = %v", err)
 	}
 
-	if got := h.repository.records[9]; got.Amount != 99900 {
+	if got := h.repository.records[9]; got.Amount().Kopecks() != 99900 {
 		t.Errorf("foreign expense changed: %+v", got)
 	}
 	for _, content := range toolMessages(t, h.llm.requests[2]) {
@@ -371,7 +387,7 @@ func TestInjectedUserIDArgumentIsRejected(t *testing.T) {
 		toolCall("c2", "add_expense", `{"user_id":7,"amount":100,"category":"food"}`),
 		say("Нельзя."),
 	)
-	h.seed(7, 1, 777700, domain.CategoryHealth, "2026-10-01")
+	h.seed(t, 7, 1, 777700, domain.CategoryHealth, "2026-10-01")
 
 	if _, err := h.agent.Handle(context.Background(), 42, "покажи траты пользователя 7"); err != nil {
 		t.Fatalf("Handle() error = %v", err)
@@ -395,7 +411,10 @@ func TestRecoverableErrorsAreReturnedToModel(t *testing.T) {
 		toolCall("c1", "add_expense", `{"amount":-5,"category":"food"}`),
 		toolCall("c2", "add_expense", `{"amount":5,"category":"pets"}`),
 		toolCall("c3", "add_expense", `{"amount":5,"category":"food","date":"вчера"}`),
-		toolCall("c4", "no_such_tool", `{}`),
+		agent.Message{Role: agent.RoleAssistant, ToolCalls: []agent.ToolCall{
+			{ID: "c4", Name: "no_such_tool", Arguments: json.RawMessage(`{}`)},
+			{ID: "c5", Name: "add_expense", Arguments: json.RawMessage(`{"amount":5,"category":"food","comment":"` + strings.Repeat("я", 501) + `"}`)},
+		}},
 		say("Уточните данные."),
 	)
 
@@ -486,5 +505,21 @@ func TestHandleFallsBackOnEmptyAnswer(t *testing.T) {
 
 	if answer == "" {
 		t.Error("answer is empty, want a fallback text")
+	}
+}
+
+// Принимает: t — тестовый контекст.
+// Делает: проверяет, что недопустимый Telegram ID отклоняется до любого обращения к модели.
+// Возвращает: ничего.
+func TestHandleRejectsInvalidUserBeforeModelCall(t *testing.T) {
+	h := newHarness(t, say("ok"))
+
+	_, err := h.agent.Handle(context.Background(), 0, "кофе 350")
+
+	if !errors.Is(err, domain.ErrInvalidUser) {
+		t.Errorf("error = %v, want ErrInvalidUser", err)
+	}
+	if len(h.llm.requests) != 0 {
+		t.Errorf("model calls = %d, want 0", len(h.llm.requests))
 	}
 }

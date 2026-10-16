@@ -10,7 +10,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/ValievM/family-expense-bot/internal/adapters/httpapi"
 	"github.com/ValievM/family-expense-bot/internal/domain"
@@ -19,23 +18,53 @@ import (
 
 // stubService запоминает переданные адаптером аргументы и возвращает заготовленные результаты.
 type stubService struct {
-	created    domain.Expense
+	created    expense.CreateInput
 	filter     expense.ListFilter
-	patchedID  int64
-	patch      expense.Patch
-	deletedID  int64
+	patchedID  domain.ExpenseID
+	changes    domain.Changes
+	deletedID  domain.ExpenseID
 	listResult []domain.Expense
-	userIDs    []int64
+	userIDs    []domain.UserID
 	err        error
 }
 
-// Принимает: второй параметр (контекст) не используется, item — создаваемый расход.
-// Делает: сохраняет item в stub.created и подставляет ID 1 и фиксированную дату расхода.
-// Возвращает: заполненный расход и stub.err.
-func (stub *stubService) Create(_ context.Context, item domain.Expense) (domain.Expense, error) {
-	stub.created = item
-	item.ID = 1
-	item.SpentAt = time.Date(2026, time.March, 5, 0, 0, 0, 0, time.UTC)
+// Принимает: id — идентификатор, owner — владелец, kopecks — сумма, category — категория, day — день в формате YYYY-MM-DD.
+// Делает: собирает валидный доменный расход через Restore, при ошибке валит тест.
+// Возвращает: domain.Expense.
+func makeExpense(t *testing.T, id int64, owner int64, kopecks int64, category domain.Category, day string) domain.Expense {
+	t.Helper()
+	ownerID, err := domain.NewUserID(owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	amount, err := domain.NewMoney(kopecks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spentOn, err := domain.ParseDay(day)
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, err := domain.Restore(domain.Snapshot{ID: domain.ExpenseID(id), Owner: ownerID, Amount: amount, Category: category, SpentOn: spentOn})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return item
+}
+
+// Принимает: второй параметр (контекст) не используется, input — данные создаваемого расхода.
+// Делает: сохраняет input в stub.created; для неположительной суммы возвращает ErrInvalidAmount, как сервис.
+// Возвращает: расход с ID 1 и фиксированным днём 2026-03-05, а также stub.err.
+func (stub *stubService) Create(_ context.Context, input expense.CreateInput) (domain.Expense, error) {
+	stub.created = input
+	if !input.Amount.IsPositive() {
+		return domain.Expense{}, domain.ErrInvalidAmount
+	}
+	day, _ := domain.ParseDay("2026-03-05")
+	item, err := domain.Restore(domain.Snapshot{ID: 1, Owner: input.Owner, Amount: input.Amount, Category: input.Category, SpentOn: day, Comment: input.Comment})
+	if err != nil {
+		return domain.Expense{}, err
+	}
 	return item, stub.err
 }
 
@@ -50,22 +79,43 @@ func (stub *stubService) List(_ context.Context, filter expense.ListFilter) ([]d
 // Принимает: контекст не используется.
 // Делает: отдаёт заготовленный список пользователей.
 // Возвращает: stub.userIDs и stub.err.
-func (stub *stubService) ListUserIDs(context.Context) ([]int64, error) { return stub.userIDs, stub.err }
+func (stub *stubService) ListUserIDs(context.Context) ([]domain.UserID, error) {
+	return stub.userIDs, stub.err
+}
 
-// Принимает: второй параметр (контекст) не используется, id — идентификатор, patch — изменения.
-// Делает: запоминает id и patch в stub.
+// Принимает: второй параметр (контекст) не используется, id — идентификатор, changes — изменения.
+// Делает: запоминает id и changes в stub.
 // Возвращает: фиксированный расход с этим id и stub.err.
-func (stub *stubService) Update(_ context.Context, id int64, patch expense.Patch) (domain.Expense, error) {
-	stub.patchedID, stub.patch = id, patch
-	return domain.Expense{ID: id, UserID: 7, Amount: 450, Category: domain.CategoryFood, SpentAt: time.Date(2026, time.March, 5, 0, 0, 0, 0, time.UTC)}, stub.err
+func (stub *stubService) Update(_ context.Context, id domain.ExpenseID, changes domain.Changes) (domain.Expense, error) {
+	stub.patchedID, stub.changes = id, changes
+	owner, _ := domain.NewUserID(7)
+	amount, _ := domain.NewMoney(450)
+	day, _ := domain.ParseDay("2026-03-05")
+	item, err := domain.Restore(domain.Snapshot{ID: id, Owner: owner, Amount: amount, Category: domain.CategoryFood, SpentOn: day})
+	if err != nil {
+		return domain.Expense{}, err
+	}
+	return item, stub.err
 }
 
 // Принимает: второй параметр (контекст) не используется, id — идентификатор.
 // Делает: запоминает id в stub.deletedID.
 // Возвращает: stub.err.
-func (stub *stubService) Delete(_ context.Context, id int64) error {
+func (stub *stubService) Delete(_ context.Context, id domain.ExpenseID) error {
 	stub.deletedID = id
 	return stub.err
+}
+
+// Принимает: t — тестовый контекст, value — число.
+// Делает: создаёт UserID, при ошибке валит тест.
+// Возвращает: domain.UserID.
+func mustUser(t *testing.T, value int64) domain.UserID {
+	t.Helper()
+	id, err := domain.NewUserID(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return id
 }
 
 // Принимает: t — тестовый контекст, stub — подставной сервис, method, target, body — метод, URL и тело запроса.
@@ -73,7 +123,7 @@ func (stub *stubService) Delete(_ context.Context, id int64) error {
 // Возвращает: записанный ответ *httptest.ResponseRecorder.
 func do(t *testing.T, stub *stubService, method, target, body string) *httptest.ResponseRecorder {
 	t.Helper()
-	handler := httpapi.NewServer(stub, time.UTC, slog.New(slog.NewTextHandler(io.Discard, nil))).Handler()
+	handler := httpapi.NewServer(stub, slog.New(slog.NewTextHandler(io.Discard, nil))).Handler()
 	request := httptest.NewRequest(method, target, strings.NewReader(body))
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
@@ -103,7 +153,7 @@ func TestCreateExpense(t *testing.T) {
 	if recorder.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201; body %s", recorder.Code, recorder.Body)
 	}
-	if stub.created.UserID != 7 || stub.created.Amount != 35000 || stub.created.Category != domain.CategoryFood || stub.created.Comment != "coffee" {
+	if stub.created.Owner.Int64() != 7 || stub.created.Amount.Kopecks() != 35000 || stub.created.Category != domain.CategoryFood || stub.created.Comment.String() != "coffee" {
 		t.Errorf("service received %+v", stub.created)
 	}
 	body := decode[map[string]any](t, recorder)
@@ -113,7 +163,7 @@ func TestCreateExpense(t *testing.T) {
 }
 
 // Принимает: t — тестовый контекст.
-// Делает: что без spent_at адаптер оставляет нулевую дату, чтобы сервис подставил сегодняшнюю.
+// Делает: что без spent_at адаптер передаёт nil-день, чтобы сервис подставил сегодняшний.
 // Возвращает: ничего.
 func TestCreateExpenseWithoutDateLeavesDefaultingToService(t *testing.T) {
 	stub := &stubService{}
@@ -122,8 +172,8 @@ func TestCreateExpenseWithoutDateLeavesDefaultingToService(t *testing.T) {
 	if recorder.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201; body %s", recorder.Code, recorder.Body)
 	}
-	if !stub.created.SpentAt.IsZero() {
-		t.Errorf("SpentAt = %v, want zero so the service applies today", stub.created.SpentAt)
+	if stub.created.SpentOn != nil {
+		t.Errorf("SpentOn = %v, want nil so the service applies today", stub.created.SpentOn)
 	}
 }
 
@@ -131,14 +181,14 @@ func TestCreateExpenseWithoutDateLeavesDefaultingToService(t *testing.T) {
 // Делает: что query-параметры user_id, category, from и to попадают в фильтр сервиса, а ответ содержит элементы.
 // Возвращает: ничего.
 func TestListExpensesPassesFilters(t *testing.T) {
-	stub := &stubService{listResult: []domain.Expense{{ID: 3, UserID: 7, Amount: 100, Category: domain.CategoryHealth, SpentAt: time.Date(2026, time.March, 1, 0, 0, 0, 0, time.UTC)}}}
+	stub := &stubService{listResult: []domain.Expense{makeExpense(t, 3, 7, 100, domain.CategoryHealth, "2026-03-01")}}
 	recorder := do(t, stub, http.MethodGet, "/api/expenses?user_id=7&category=health&from=2026-03-01&to=2026-03-31", "")
 
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body %s", recorder.Code, recorder.Body)
 	}
-	if stub.filter.UserID == nil || *stub.filter.UserID != 7 {
-		t.Errorf("user filter = %v, want 7", stub.filter.UserID)
+	if stub.filter.Owner == nil || stub.filter.Owner.Int64() != 7 {
+		t.Errorf("user filter = %v, want 7", stub.filter.Owner)
 	}
 	if stub.filter.Category == nil || *stub.filter.Category != domain.CategoryHealth {
 		t.Errorf("category filter = %v, want health", stub.filter.Category)
@@ -176,14 +226,14 @@ func TestUpdateExpenseBuildsPartialPatch(t *testing.T) {
 	if stub.patchedID != 12 {
 		t.Errorf("id = %d, want 12", stub.patchedID)
 	}
-	if stub.patch.Amount == nil || *stub.patch.Amount != 450 {
-		t.Errorf("amount patch = %v, want 450", stub.patch.Amount)
+	if stub.changes.Amount == nil || stub.changes.Amount.Kopecks() != 450 {
+		t.Errorf("amount change = %v, want 450", stub.changes.Amount)
 	}
-	if stub.patch.Comment == nil || *stub.patch.Comment != "" {
-		t.Errorf("comment patch = %v, want explicit empty string", stub.patch.Comment)
+	if stub.changes.Comment == nil || stub.changes.Comment.String() != "" {
+		t.Errorf("comment change = %v, want explicit empty string", stub.changes.Comment)
 	}
-	if stub.patch.Category != nil || stub.patch.SpentAt != nil {
-		t.Errorf("absent fields must stay nil: %+v", stub.patch)
+	if stub.changes.Category != nil || stub.changes.SpentOn != nil {
+		t.Errorf("absent fields must stay nil: %+v", stub.changes)
 	}
 }
 
@@ -203,7 +253,7 @@ func TestDeleteExpense(t *testing.T) {
 // Делает: форму ответов /api/users и /api/categories.
 // Возвращает: ничего.
 func TestListUsersAndCategories(t *testing.T) {
-	users := do(t, &stubService{userIDs: []int64{1, 2}}, http.MethodGet, "/api/users", "")
+	users := do(t, &stubService{userIDs: []domain.UserID{mustUser(t, 1), mustUser(t, 2)}}, http.MethodGet, "/api/users", "")
 	if got := strings.TrimSpace(users.Body.String()); got != `{"items":[{"user_id":1},{"user_id":2}]}` {
 		t.Errorf("users body = %s", got)
 	}
@@ -227,7 +277,7 @@ func TestErrorMapping(t *testing.T) {
 		wantStatus int
 		wantCode   string
 	}{
-		{"domain validation", http.MethodPost, "/api/expenses", `{"user_id":1,"amount":0,"category":"food"}`, domain.ErrInvalidAmount, 400, "invalid_amount"},
+		{"domain validation", http.MethodPost, "/api/expenses", `{"user_id":1,"amount":0,"category":"food"}`, nil, 400, "invalid_amount"},
 		{"unknown category", http.MethodPost, "/api/expenses", `{"user_id":1,"amount":1,"category":"x"}`, domain.ErrUnknownCategory, 400, "unknown_category"},
 		{"not found on update", http.MethodPatch, "/api/expenses/5", `{"amount":1}`, expense.ErrNotFound, 404, "not_found"},
 		{"not found on delete", http.MethodDelete, "/api/expenses/5", "", expense.ErrNotFound, 404, "not_found"},
@@ -237,6 +287,13 @@ func TestErrorMapping(t *testing.T) {
 		{"unknown json field", http.MethodPost, "/api/expenses", `{"user_id":1,"amount":1,"category":"food","owner":2}`, nil, 400, "invalid_json"},
 		{"trailing json", http.MethodPost, "/api/expenses", `{"user_id":1} {}`, nil, 400, "invalid_json"},
 		{"bad date", http.MethodPost, "/api/expenses", `{"user_id":1,"amount":1,"category":"food","spent_at":"05.03.2026"}`, nil, 400, "invalid_date"},
+		{"comment too long", http.MethodPost, "/api/expenses", `{"user_id":1,"amount":1,"category":"food","comment":"` + strings.Repeat("я", 501) + `"}`, nil, 400, "comment_too_long"},
+		{"comment too long on update", http.MethodPatch, "/api/expenses/5", `{"comment":"` + strings.Repeat("я", 501) + `"}`, nil, 400, "comment_too_long"},
+		{"zero user on create", http.MethodPost, "/api/expenses", `{"user_id":0,"amount":1,"category":"food"}`, nil, 400, "invalid_user"},
+		{"negative user on create", http.MethodPost, "/api/expenses", `{"user_id":-5,"amount":1,"category":"food"}`, nil, 400, "invalid_user"},
+		{"zero user filter", http.MethodGet, "/api/expenses?user_id=0", "", nil, 400, "invalid_user"},
+		{"negative amount", http.MethodPost, "/api/expenses", `{"user_id":1,"amount":-1,"category":"food"}`, nil, 400, "invalid_amount"},
+		{"unknown category filter", http.MethodGet, "/api/expenses?category=x", "", nil, 400, "unknown_category"},
 		{"bad id", http.MethodDelete, "/api/expenses/abc", "", nil, 400, "invalid_id"},
 		{"bad user filter", http.MethodGet, "/api/expenses?user_id=abc", "", nil, 400, "invalid_user"},
 		{"bad period date", http.MethodGet, "/api/expenses?from=yesterday", "", nil, 400, "invalid_date"},
