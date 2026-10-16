@@ -30,6 +30,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    # Запас на корректную остановку: доводим начатые ответы бота и запросы API.
+    stop_grace_period: 20s
     restart: unless-stopped
 
   web:

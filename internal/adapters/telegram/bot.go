@@ -17,6 +17,7 @@ const (
 	handleTimeout      = 90 * time.Second
 	maxMessageRunes    = 4096
 	rememberTimeout    = 3 * time.Second
+	drainTimeout       = 8 * time.Second
 
 	failureReply   = "Что-то пошло не так, попробуйте ещё раз чуть позже."
 	deniedReply    = "У вас нет доступа к этому боту."
@@ -39,6 +40,7 @@ type Bot struct {
 	directory ports.MemberDirectory
 	logger    *slog.Logger
 	retry     time.Duration
+	drain     time.Duration
 	queues    sync.Map // userID -> *userQueue
 }
 
@@ -63,20 +65,28 @@ func WithRetryDelay(delay time.Duration) BotOption {
 	return func(bot *Bot) { bot.retry = delay }
 }
 
+func WithDrainTimeout(timeout time.Duration) BotOption {
+	return func(bot *Bot) { bot.drain = timeout }
+}
+
 func NewBot(gateway Gateway, responder ports.Responder, access ports.AccessPolicy, options ...BotOption) *Bot {
-	bot := &Bot{gateway: gateway, responder: responder, access: access, logger: slog.Default(), retry: retryDelay}
+	bot := &Bot{gateway: gateway, responder: responder, access: access, logger: slog.Default(), retry: retryDelay, drain: drainTimeout}
 	for _, option := range options {
 		option(bot)
 	}
 	return bot
 }
 
-// Принимает: ctx — его отмена останавливает бота.
-// Делает: в цикле получает обновления, каждое сообщение обрабатывает отдельно; при остановке ждёт обработчиков.
-// Возвращает: nil после остановки по контексту.
+// Принимает: ctx — контекст, отмена которого останавливает бота (сигнал завершения процесса).
+// Делает: читает обновления и раздаёт сообщения по очередям пользователей. После остановки новые сообщения не берёт,
+// очереди не разбирает дальше, а уже начатые ответы даёт довести до конца в пределах drain; затем отменяет остатки.
+// Возвращает: nil после остановки.
 func (bot *Bot) Run(ctx context.Context) error {
+	// Работа над сообщениями не зависит от сигнала остановки: ответ, который уже начат, должен дойти до пользователя.
+	work, abandon := context.WithCancel(context.WithoutCancel(ctx))
+	defer abandon()
 	var inFlight sync.WaitGroup
-	defer inFlight.Wait()
+	defer bot.drainInFlight(&inFlight, abandon)
 
 	if err := bot.gateway.SetProfile(ctx, defaultProfile); err != nil {
 		bot.logger.WarnContext(ctx, "telegram bot profile was not updated", "error", err)
@@ -98,10 +108,27 @@ func (bot *Bot) Run(ctx context.Context) error {
 			if update.Message == nil {
 				continue
 			}
-			bot.dispatch(ctx, &inFlight, *update.Message)
+			bot.dispatch(ctx, work, &inFlight, *update.Message)
 		}
 	}
 	return nil
+}
+
+// Принимает: inFlight — счётчик работающих обработчиков; abandon — отмена их контекста.
+// Делает: ждёт завершения начатых ответов не дольше bot.drain, после чего отменяет оставшиеся.
+// Возвращает: ничего.
+func (bot *Bot) drainInFlight(inFlight *sync.WaitGroup, abandon context.CancelFunc) {
+	done := make(chan struct{})
+	go func() {
+		inFlight.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(bot.drain):
+		bot.logger.Warn("telegram handlers did not finish before the shutdown deadline", "deadline", bot.drain)
+		abandon()
+	}
 }
 
 func (bot *Bot) wait(ctx context.Context, delay time.Duration) {
@@ -202,7 +229,7 @@ func (bot *Bot) reply(ctx context.Context, chatID int64, text string) {
 // Принимает: ctx; inFlight — счётчик обработчиков; message — входящее сообщение.
 // Делает: ставит сообщение в очередь автора и при нужде запускает её разбор; разные пользователи идут параллельно.
 // Возвращает: ничего.
-func (bot *Bot) dispatch(ctx context.Context, inFlight *sync.WaitGroup, message Message) {
+func (bot *Bot) dispatch(stop, work context.Context, inFlight *sync.WaitGroup, message Message) {
 	var userID int64
 	if message.From != nil {
 		userID = message.From.ID
@@ -229,10 +256,18 @@ func (bot *Bot) dispatch(ctx context.Context, inFlight *sync.WaitGroup, message 
 				queue.mutex.Unlock()
 				return
 			}
+			if stop.Err() != nil {
+				// После остановки новые сообщения из очереди не берём: Telegram их уже подтвердил, но ответить на них мы не успеем.
+				bot.logger.Warn("telegram messages dropped on shutdown", "user_id", userID, "count", len(queue.pending))
+				queue.pending = nil
+				queue.running = false
+				queue.mutex.Unlock()
+				return
+			}
 			next := queue.pending[0]
 			queue.pending = queue.pending[1:]
 			queue.mutex.Unlock()
-			bot.safeHandle(ctx, next)
+			bot.safeHandle(work, next)
 		}
 	}()
 }
